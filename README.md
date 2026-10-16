@@ -1,3 +1,5 @@
+> **About this fork:** This is a fork of [coldeagle/SFDC_Job_Sequencer](https://github.com/coldeagle/SFDC_Job_Sequencer), created and copyrighted by Jason Hardy (BSD 3-Clause, see [LICENSE](LICENSE)). It exists solely to change the Sequence Job fields **Job Parameters** (`Parameters__c`), **Query - Select** (`Select__c`) and **Query - Where** (`Where__c`) from Text Area to Long Text Area (20,000 characters), so sequence jobs can hold more complex queries. ApexDoc comments were also added to the classes. All other functionality is Jason Hardy's original work.
+
 # What is the Job Sequencer
 The tool provides it's users with the ability to schedule jobs on a hourly, daily, weekly, monthly, quarterly or yearly basis. Sequence jobs are created with a frequency based on those Schedules.
 
@@ -42,5 +44,8 @@ Then when the sequence job is run, all of the opportunities queried would have t
 
 Developers also have the option of creating additional functions that can be used. More details can be found in the "Job Sequencer Help" tab as well as the code comments of the of the "JobSequenceDefaultHandler" class. 
 
-# Link to Unmanaged Package Installer
-https://login.salesforce.com/packaging/installPackage.apexp?p0=04t4P000002icUM
+# Link to Unlocked Package Installer
+Job Sequencer 1.0.0 (unlocked package, no namespace):
+
+- Production / Developer Edition: https://login.salesforce.com/packaging/installPackage.apexp?p0=04tjV000000AkETQA0
+- Sandbox: https://test.salesforce.com/packaging/installPackage.apexp?p0=04tjV000000AkETQA0

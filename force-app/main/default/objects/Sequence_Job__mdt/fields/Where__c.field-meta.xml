@@ -6,6 +6,7 @@
     <fieldManageability>SubscriberControlled</fieldManageability>
     <inlineHelpText>What are the conditions that will be used to filter the result set? DO NOT include the WHERE keyword</inlineHelpText>
     <label>Query - Where</label>
-    <required>false</required>
-    <type>TextArea</type>
+    <length>20000</length>
+    <type>LongTextArea</type>
+    <visibleLines>5</visibleLines>
 </CustomField>

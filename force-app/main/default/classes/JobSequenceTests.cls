@@ -10,8 +10,24 @@
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+/**
+ * @description: **JobSequenceTests** -- Unit tests covering the job sequencer classes, using the Test Only sequence job records.
+ * @author: Jason Hardy
+ * @date: 10/26/2019
+ *
+ * Modification Log:
+ *   | Date:       | By:               | Change Description                                      |
+ *   | ----------- | ----------------- | ------------------------------------------------------- |
+ *   |  10/26/2019 |  Jason Hardy      | Initial Creation (original author)                      |
+ *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
+ *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
+ *
+ */
 @IsTest
 public with sharing class JobSequenceTests {
+    /**
+     * @description Test setup: touches the running user so the test context has a committed user record.
+     */
     @TestSetup static void createData() {
         User thisUser = [SELECT Id FROM User WHERE Id =:UserInfo.getUserId()];
         System.runAs(thisUser) {
@@ -19,6 +35,9 @@ public with sharing class JobSequenceTests {
         }
     }
 
+    /**
+     * @description Verifies retries are scheduled and that exceeding max retries and missing parameters throw errors.
+     */
     @IsTest static void JobSequenceClassRetryTest() {
         Test.startTest();
         JobSequence js = new JobSequence();
@@ -46,6 +65,9 @@ public with sharing class JobSequenceTests {
         Test.stopTest();
     }
 
+    /**
+     * @description Verifies a batch run with an unknown function logs a Job Sequence Error.
+     */
     @IsTest static void JobSequenceBatchInvalidFunctionTest() {
         Test.startTest();
         List<Job_Sequence_Error__c> jse = [SELECT Id FROM Job_Sequence_Error__c];
@@ -64,6 +86,9 @@ public with sharing class JobSequenceTests {
         System.assert(!jse.isEmpty(),'Errors were not created!');
     }
 
+    /**
+     * @description Verifies an invalid handler class name logs Job Sequence Errors.
+     */
     @IsTest static void JobSequenceExeBadHandlerTest() {
         Job_Sequence_Error__c jse = new Job_Sequence_Error__c(JobFrequency__c='Test Only',BatchJobId__c='Test',Exception__c='Testing');
         insert jse;
@@ -78,6 +103,9 @@ public with sharing class JobSequenceTests {
         System.assert(!jses.isEmpty(),'Errors were not created for a bad handler name!');
     }
 
+    /**
+     * @description Verifies the DELETE DML job removes the matching records.
+     */
     @IsTest static void JobSequenceExeDeleteTest() {
         Job_Sequence_Error__c jse = new Job_Sequence_Error__c(JobFrequency__c='Test Only',BatchJobId__c='Test',Exception__c='Testing');
         insert jse;
@@ -90,6 +118,9 @@ public with sharing class JobSequenceTests {
         System.assert(jses.isEmpty(),'The errors were not deleted');
     }
 
+    /**
+     * @description Verifies the UPSERT DML job runs without logging errors.
+     */
     @IsTest static void JobSequenceExeUpsertTests() {
         Job_Sequence_Error__c jse = new Job_Sequence_Error__c(JobFrequency__c='Test Only',BatchJobId__c='Test',Exception__c='Testing');
         insert jse;
@@ -103,6 +134,9 @@ public with sharing class JobSequenceTests {
         System.assert(jses.isEmpty(),'New error records were created!');
     }
 
+    /**
+     * @description Verifies a queueable run with an unknown function logs a Job Sequence Error.
+     */
     @IsTest static void JobSequenceQueueableInvalidFunctionTest() {
         Test.startTest();
         List<Job_Sequence_Error__c> jse = [SELECT Id FROM Job_Sequence_Error__c];
@@ -119,6 +153,9 @@ public with sharing class JobSequenceTests {
         System.assert(!jse.isEmpty(),'Errors were not created!');
     }
 
+    /**
+     * @description Verifies the Test Only field-shift sequence updates records with the configured parameters.
+     */
     @IsTest static void JobSequenceQueueableTests() {
         Test.startTest();
         System.enqueueJob(new JobSequenceQueueable('Test Only'));
@@ -154,6 +191,9 @@ public with sharing class JobSequenceTests {
         System.assert(testsPassed,'The test did not pass!');
     }
 
+    /**
+     * @description Verifies the schedulable runs, exposes its error messages, and logs an error past max retries.
+     */
     @IsTest static void JobSequenceSchedulableTests() {
         Test.startTest();
         List<Job_Sequence_Error__c> jse = [SELECT Id FROM Job_Sequence_Error__c];
@@ -173,42 +213,63 @@ public with sharing class JobSequenceTests {
         System.assert(!jse.isEmpty(),'Errors were not created!');
     }
 
+    /**
+     * @description Verifies the hourly schedulable enqueues without error.
+     */
     @IsTest static void JobSequenceHourlyTests() {
         Test.startTest();
         new JobSequenceHourly().execute(null);
         Test.stopTest();
     }
 
+    /**
+     * @description Verifies the daily schedulable enqueues without error.
+     */
     @IsTest static void JobSequenceDailyTests() {
         Test.startTest();
         new JobSequenceDaily().execute(null);
         Test.stopTest();
     }
 
+    /**
+     * @description Verifies the weekly schedulable enqueues without error.
+     */
     @IsTest static void JobSequenceWeeklyTests() {
         Test.startTest();
         new JobSequenceWeekly().execute(null);
         Test.stopTest();
     }
 
+    /**
+     * @description Verifies the monthly schedulable enqueues without error.
+     */
     @IsTest static void JobSequenceMonthlyTests() {
         Test.startTest();
         new JobSequenceMonthly().execute(null);
         Test.stopTest();
     }
 
+    /**
+     * @description Verifies the yearly schedulable enqueues without error.
+     */
     @IsTest static void JobSequenceYearlyTests() {
         Test.startTest();
         new JobSequenceYearly().execute(null);
         Test.stopTest();
     }
 
+    /**
+     * @description Verifies scheduling all runs completes without error.
+     */
     @IsTest static void JobSequenceUtilitiesScheduleAll() {
         Test.startTest();
         JobSequenceUtilities.scheduleAllRuns();
         Test.stopTest();
     }
 
+    /**
+     * @description Verifies parameter values are cast and applied to currency, date, boolean and text fields.
+     */
     @IsTest static void JobSequenceUtilitiesChangeSobjectValueFromParameters() {
         Test.startTest();
         Opportunity opp = new Opportunity();
@@ -230,6 +291,9 @@ public with sharing class JobSequenceTests {
         Test.stopTest();
     }
 
+    /**
+     * @description Verifies the controller page references and that each schedule method schedules its job.
+     */
     @IsTest static void JobSequenceVisualforceContTests() {
         Test.startTest();
         JobSequenceVisualforceCont jsvc = new JobSequenceVisualforceCont();
@@ -247,6 +311,9 @@ public with sharing class JobSequenceTests {
         Test.stopTest();
     }
 
+    /**
+     * @description Verifies the controller schedules all six runs.
+     */
     @IsTest static void JobSequenceVisualforceContSchAllTests() {
         Test.startTest();
         JobSequenceVisualforceCont jsvc = new JobSequenceVisualforceCont();
@@ -255,6 +322,10 @@ public with sharing class JobSequenceTests {
         Test.stopTest();
     }
 
+    /**
+     * @description Builds a DML job sequence that deletes the test Job Sequence Error records.
+     * @return The configured job sequence
+     */
     private static JobSequence constructTestJobSequenceErrorJobSequenceObj() {
         JobSequence js = new JobSequence();
         js.allOrNone = true;

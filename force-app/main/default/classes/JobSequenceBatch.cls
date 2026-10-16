@@ -9,14 +9,29 @@
  * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+/**
+ * @description: **JobSequenceBatch** -- This class is responsible for handling items in a batch context.
+ * @author: Jason Hardy
+ * @date: 10/26/2019
  *
- * ----------------------------------------------------------------------------------------
+ * Modification Log:
+ *   | Date:       | By:               | Change Description                                      |
+ *   | ----------- | ----------------- | ------------------------------------------------------- |
+ *   |  10/26/2019 |  Jason Hardy      | Initial Creation (original author)                      |
+ *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
+ *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
  *
- * This class is responsible for handling items in a batch context.
  */
 public without sharing class JobSequenceBatch implements Database.Batchable<SObject>,Database.Stateful, Database.AllowsCallouts {
     private JobSequence js {Get;Set;}
 
+    /**
+     * @description Builds the query locator from the job sequence query, falling back to an empty locator and
+     * logging an error when the query is invalid.
+     * @param BC The batchable context
+     * @return The query locator for the records to process
+     */
     public Database.QueryLocator start(Database.BatchableContext BC) {
         Database.QueryLocator returnLocator;
         try {
@@ -29,6 +44,11 @@ public without sharing class JobSequenceBatch implements Database.Batchable<SObj
 
         return returnLocator;
     }
+    /**
+     * @description Executes the job sequence against the current batch of records, logging any errors.
+     * @param BC    The batchable context
+     * @param scope The records in the current batch
+     */
     public void execute(Database.BatchableContext BC, List<SObject> scope) {
         try {
             JobSequenceExe.execute(js, scope);
@@ -37,16 +57,24 @@ public without sharing class JobSequenceBatch implements Database.Batchable<SObj
         }
 
     }
+    /**
+     * @description Sends error notifications if needed and enqueues the next job sequence.
+     * @param BC The batchable context
+     */
     public void finish(Database.BatchableContext BC) {
         handleFinish(bc,js);
     }
 
+    /**
+     * @description Constructs the batch for the given job sequence.
+     * @param js The job sequence to run in a batch context
+     */
     public JobSequenceBatch(JobSequence js) {
         this.js = js;
     }
 
     /**
-     * This function will handle the finish actions for the batch job and will send an email if errors are found
+     * @description This function will handle the finish actions for the batch job and will send an email if errors are found
      * and enqueue the next job sequence
      *
      * @param bc    The batch context

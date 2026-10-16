@@ -1,0 +1,20 @@
+{
+  "packageDirectories": [
+    {
+      "versionName": "ver 1.0",
+      "versionNumber": "1.0.0.NEXT",
+      "path": "force-app",
+      "default": true,
+      "package": "Job Sequencer",
+      "versionDescription": "Metadata-driven job sequencer (fork of coldeagle/SFDC_Job_Sequencer with LongTextArea query/parameter fields)"
+    }
+  ],
+  "name": "Job_Sequencer",
+  "namespace": "",
+  "sfdcLoginUrl": "https://login.salesforce.com",
+  "sourceApiVersion": "68.0",
+  "packageAliases": {
+    "Job Sequencer": "0HojV0000001HYHSA2",
+    "Job Sequencer@1.0.0-3": "04tjV000000AkETQA0"
+  }
+}

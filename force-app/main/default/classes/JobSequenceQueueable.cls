@@ -9,15 +9,29 @@
  * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------------------------
- *
- * This class is responsible for handling queuing up new job sequences as well as running any sequence jobs that are
+ */
+/**
+ * @description: **JobSequenceQueueable** -- This class is responsible for handling queuing up new job sequences as well as running any sequence jobs that are
  * set to run in a non batch context.
+ * @author: Jason Hardy
+ * @date: 10/26/2019
+ *
+ * Modification Log:
+ *   | Date:       | By:               | Change Description                                      |
+ *   | ----------- | ----------------- | ------------------------------------------------------- |
+ *   |  10/26/2019 |  Jason Hardy      | Initial Creation (original author)                      |
+ *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
+ *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
+ *
  */
 global with sharing class JobSequenceQueueable implements Queueable, Database.AllowsCallouts {
     global JobSequence js {Get;Set;}
 
+    /**
+     * @description Runs the current sequence job: starts a batch (or schedules a retry when too many batches
+     * are running), or executes it inline and enqueues the next job. Errors are logged and emailed.
+     * @param context The queueable context
+     */
     global void execute(QueueableContext context) {
         if (js != null && js.sj != null && js.sjcs.Enabled__c) {
             try {
@@ -40,7 +54,7 @@ global with sharing class JobSequenceQueueable implements Queueable, Database.Al
     }
 
     /**
-     * Constructs a job sequence queueable object based on the frequency that the jobs should be run on. This function
+     * @description Constructs a job sequence queueable object based on the frequency that the jobs should be run on. This function
      * will query all of the sequence jobs with the matching frequency and work through all of them. This function
      * can be helpful when you wish to test the sequence jobs without scheduling a run. Example code to run anonymous
      * that will run all of the "Hourly" sequence jobs:
@@ -54,7 +68,7 @@ global with sharing class JobSequenceQueueable implements Queueable, Database.Al
     }
 
     /**
-     * Constructs a job schedule queueable object based on the job sequence
+     * @description Constructs a job schedule queueable object based on the job sequence
      *
      * @param js    The current job sequence. Used to determine what the next sequence will be
      */
@@ -63,7 +77,7 @@ global with sharing class JobSequenceQueueable implements Queueable, Database.Al
     }
 
     /**
-     * Constructs a job schedule queueable object based on the job sequence and whether or not it's a retry
+     * @description Constructs a job schedule queueable object based on the job sequence and whether or not it's a retry
      *
      * @param js        The current job sequence. Used to determine what the next sequence will be
      * @param isRetry   Indicates if this is a retry attempt (e.g. there were not enough available batch jobs when last run so a retry is needed)
@@ -74,7 +88,7 @@ global with sharing class JobSequenceQueueable implements Queueable, Database.Al
     }
 
     /**
-     * This method will return the next job in the Sequence Job object.
+     * @description This method will return the next job in the Sequence Job object.
      * If it is the first run, it will return the first record found
      * The first run is determined by the js parameter being null
      *
@@ -106,12 +120,14 @@ global with sharing class JobSequenceQueueable implements Queueable, Database.Al
     }
 
     /**
-     * Method will query the sequence job metadata table and return the records for the indicated frequency
+     * @description Method will query the sequence job metadata table and return the records for the indicated frequency
      *
      * @param frequency The run frequency, this will be used to determine which sequences should be pulled
      * @param js        The current job sequence. Used to determine what the next sequence will be.
      *
      * @return The list of sequence job metadata records
+     *
+     * @throws JobSequenceException when no frequency can be determined or no active sequence jobs exist for it
      */
     private List<Sequence_Job__mdt> getSequenceJobs(String frequency, JobSequence js) {
         List<Sequence_Job__mdt> returnList;
@@ -124,7 +140,7 @@ global with sharing class JobSequenceQueueable implements Queueable, Database.Al
     }
 
     /**
-     * Constructs the sequence job query based on the frequency passed
+     * @description Constructs the sequence job query based on the frequency passed
      *
      * @param frequency The run frequency, this will be used to determine which sequences should be pulled
      *

@@ -9,11 +9,20 @@
  * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------------------------
- *
- * This is the a wrapper class which is used by the various job sequence management class to exchange a job. Additionally,
+ */
+/**
+ * @description: **JobSequence** -- This is the a wrapper class which is used by the various job sequence management class to exchange a job. Additionally,
  * contains various functions to manage aspects of a particular job sequence.
+ * @author: Jason Hardy
+ * @date: 10/26/2019
+ *
+ * Modification Log:
+ *   | Date:       | By:               | Change Description                                      |
+ *   | ----------- | ----------------- | ------------------------------------------------------- |
+ *   |  10/26/2019 |  Jason Hardy      | Initial Creation (original author)                      |
+ *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
+ *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
+ *
  */
 global without sharing class JobSequence {
     global Boolean allOrNone {
@@ -92,10 +101,13 @@ global without sharing class JobSequence {
         set;
     }
 
+    /**
+     * @description Default constructor; properties are populated by the caller.
+     */
     global JobSequence(){}
 
     /**
-     * Job sequence constructor using a sequence job record
+     * @description Job sequence constructor using a sequence job record
      *
      * @param sj    The sequence job record to initialize with
      */
@@ -119,7 +131,7 @@ global without sharing class JobSequence {
     }
 
     /**
-     * Method will log an error in the Job Sequence error object
+     * @description Method will log an error in the Job Sequence error object
      *
      * @param jobId     The job Id to log against
      * @param e         The exception
@@ -130,7 +142,9 @@ global without sharing class JobSequence {
     }
 
     /**
-     * Will throw a maximum retry limit reached error
+     * @description Will throw a maximum retry limit reached error
+     *
+     * @throws JobSequenceException always, naming the job and the configured maximum retries
      */
     global void maxRetryLimitReachedError() {
         throw new JobSequenceException(
@@ -146,7 +160,9 @@ global without sharing class JobSequence {
     }
 
     /**
-     * Will throw a no function found error
+     * @description Will throw a no function found error
+     *
+     * @throws JobSequenceException always, naming the execution job that has no matching function
      */
     global void noFunctionFoundError() {
         String errorMsg = String.format(
@@ -159,7 +175,9 @@ global without sharing class JobSequence {
     }
 
     /**
-     * Will throw a no parameters found error
+     * @description Will throw a no parameters found error
+     *
+     * @throws JobSequenceException always, naming the execution job and sequence job record
      */
     global void noParametersFoundError() {
         throw new JobSequenceException(
@@ -174,9 +192,11 @@ global without sharing class JobSequence {
     }
 
     /**
-     * Function will schedule a future run for the current job sequence
+     * @description Function will schedule a future run for the current job sequence
      *
      * @param js    The current job sequence.
+     *
+     * @throws JobSequenceException when the job has already reached the maximum number of retries
      */
     global void scheduleRetry(JobSequence js) {
         if (js.numRetries >= this.sjcs.MaxRetries__c) js.maxRetryLimitReachedError();
@@ -189,7 +209,7 @@ global without sharing class JobSequence {
     }
 
     /**
-     * This function will send error emails if applicable
+     * @description This function will send error emails if applicable
      *
      * @param jobId     The job Id that will be used to identify the job that errored out
      * @param errors    The error message records
@@ -199,7 +219,7 @@ global without sharing class JobSequence {
     }
 
     /**
-     * Function will structure a query based on the data found in the sequence job record
+     * @description Function will structure a query based on the data found in the sequence job record
      *
      * @param sj    The Sequence Job object record
      *
@@ -214,7 +234,7 @@ global without sharing class JobSequence {
     }
 
     /**
-     * Method will get parameters from the sequence job passed
+     * @description Method will get parameters from the sequence job passed
      *
      * @param sj    The Sequence Job object record
      *
@@ -234,7 +254,7 @@ global without sharing class JobSequence {
     }
 
     /**
-     * This function will send error emails if applicable
+     * @description This function will send error emails if applicable
      *
      * @param jobId         The job Id that will be used to identify the job that errored out
      * @param currentJob    The name of the current job
@@ -261,8 +281,9 @@ global without sharing class JobSequence {
     }
 
     /**
-     * This function will update the date time variable stored at the class level
+     * @description This function will update the date time variable stored at the class level
      *
+     * @param testingParam  The parameter name to read (test or non-test variant)
      * @param paramMap  The map of parameters to be used to to update date time variable
      */
     @TestVisible void updateDateTimeVar(String testingParam, Map<String,String> paramMap) {
@@ -275,7 +296,7 @@ global without sharing class JobSequence {
     }
 
     /**
-     * This function will update the query based on params. This is particularly useful for testing scenarios where
+     * @description This function will update the query based on params. This is particularly useful for testing scenarios where
      * we need to swap out values based on whether or not testing is running
      *
      * @param q         The query to update

@@ -9,17 +9,26 @@
  * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+/**
+ * @description: **JobSequenceUtilities** -- This class contains various utility methods which can be used by the job sequence functionality
+ * @author: Jason Hardy
+ * @date: 10/26/2019
  *
- * ----------------------------------------------------------------------------------------
+ * Modification Log:
+ *   | Date:       | By:               | Change Description                                      |
+ *   | ----------- | ----------------- | ------------------------------------------------------- |
+ *   |  10/26/2019 |  Jason Hardy      | Initial Creation (original author)                      |
+ *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
+ *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
  *
- * This class contains various utility methods which can be used by the job sequence functionality
  */
 global without sharing class JobSequenceUtilities {
     private static final Set<String> DECIMAL_TYPES = new Set<String>{'DOUBLE','PERCENT','CURRENCY'};
     private static Set<String> FIELD_TYPES_TO_CAST = new Set<String> {'DATE','DATETIME','INTEGER','BOOLEAN','DOUBLE','PERCENT','CURRENCY'};
 
     /**
-     * This method perform the DML operation specified to the records passed.
+     * @description This method perform the DML operation specified to the records passed.
      *
      * This is different from the normal attempt DML because it will not be executed in a try catch, this way the
      * error log can be initiated from the job sequence handler
@@ -35,7 +44,7 @@ global without sharing class JobSequenceUtilities {
     }
 
     /**
-     * This method perform the DML operation specified to the records passed.
+     * @description This method perform the DML operation specified to the records passed.
      *
      * This is different from the normal attempt DML because it will not be executed in a try catch, this way the
      * error log can be initiated from the job sequence handler
@@ -75,16 +84,20 @@ global without sharing class JobSequenceUtilities {
     }
 
     /**
-     * The params must be formatted as follows:
+     * @description Updates field values on the SObject from the parameter map, casting each value to the
+     * field's type. The params must be formatted as follows:
      *
      * fieldApiName:NewValue
      *
      * Multiple values can be done using commas to deliminate
      *
      * @param sobj      The sobject that will be changed
+     * @param fldMap    The field map for the sobject's type
      * @param params    The parameters containing the field API name and the new value
      *
      * @return          The adjusted sobject
+     *
+     * @throws JobSequenceException when a parameter names a field that cannot be described
      */
     global static SObject changeSobjectValueFromParameters(
             SObject sobj,
@@ -120,7 +133,7 @@ global without sharing class JobSequenceUtilities {
     }
 
     /**
-     * Will execute dynamic sobject deletes
+     * @description Will execute dynamic sobject deletes
      *
      * @param records       The records to be deleted
      * @param allOrNone     Whether or not it should allow partial success or fail the entire batch.
@@ -135,7 +148,7 @@ global without sharing class JobSequenceUtilities {
 
 
     /**
-     * Will execute a dynamic sobject upsert using the set of records passed as well as the other options
+     * @description Will execute a dynamic sobject upsert using the set of records passed as well as the other options
      *
      * Note, specifying an external Id field will negate the all or none setting
      *
@@ -163,7 +176,7 @@ global without sharing class JobSequenceUtilities {
     }
 
     /**
-     * Method will log an error in the Job Sequence error object
+     * @description Method will log an error in the Job Sequence error object
      *
      * @param js    The job sequence object wrapper
      * @param scope The scope of records being worked with
@@ -178,7 +191,7 @@ global without sharing class JobSequenceUtilities {
     }
 
     /**
-     * Method will log an error in the Job Sequence error object
+     * @description Method will log an error in the Job Sequence error object
      *
      * @param jobId         The job Id to log against
      * @param currentJob    The name of the current job
@@ -207,6 +220,9 @@ global without sharing class JobSequenceUtilities {
         insert jse;
     }
 
+    /**
+     * @description Schedules all of the out of the box job sequence runs.
+     */
     global static void scheduleAllRuns() {
         scheduleHourlyRun();
         scheduleDailyRun();
@@ -217,46 +233,49 @@ global without sharing class JobSequenceUtilities {
     }
 
     /**
-     * This function will schedule the hourly class
+     * @description This function will schedule the hourly class
      */
     global static void scheduleHourlyRun() {
         setupScheduledRun('JobSequenceHourly',Label.Job_Sequence_Hourly_Cron);
     }
 
     /**
-     * This function will schedule the daily class
+     * @description This function will schedule the daily class
      */
     global static void scheduleDailyRun() {
         setupScheduledRun('JobSequenceDaily',Label.Job_Sequence_Daily_Cron);
     }
 
     /**
-     * This function will schedule the weekly class
+     * @description This function will schedule the weekly class
      */
     global static void scheduleWeeklyRun() {
         setupScheduledRun('JobSequenceWeekly',Label.Job_Sequence_Weekly_Cron);
     }
     
     /**
-     * This function will schedule the monthly class
+     * @description This function will schedule the monthly class
      */
     global static void scheduleMonthlyRun() {
         setupScheduledRun('JobSequenceMonthly',Label.Job_Sequence_Monthly_Cron);
     }
 
+    /**
+     * @description This function will schedule the quarterly class
+     */
     global static void scheduleQuarterlyRun() {
         setupScheduledRun('JobSequenceQuarterly',Label.Job_Sequence_Quarterly_Cron);
     }
 
     /**
-     * This function will schedule the yearly class
+     * @description This function will schedule the yearly class
      */
     global static void scheduleYearlyRun() {
         setupScheduledRun('JobSequenceYearly',Label.Job_Sequence_Yearly_Cron);
     }
 
     /**
-     * Sends an email notification
+     * @description Sends an email notification
      *
      * @param toAddresses Optional      A list of email addresses or object IDs of the contacts, leads, and users you’re sending the email to. The maximum number of email addresses allowed is 100.
      * @param ccAddresses Optional      A list of carbon copy (CC) addresses or object IDs of the contacts, leads, and users you’re sending the email to. The maximum allowed is 25.
@@ -288,7 +307,7 @@ global without sharing class JobSequenceUtilities {
 
 
     /**
-     * This function will setup a scheduled run based on the class name passed and the schedule base don the cron string passed
+     * @description This function will setup a scheduled run based on the class name passed and the schedule base don the cron string passed
      *
      * @param className     The name of the scheduled class to run
      * @param cronString    The cron schedule as a string
@@ -300,7 +319,7 @@ global without sharing class JobSequenceUtilities {
     }
 
     /**
-     * Creates an email notification
+     * @description Creates an email notification
      *
      * @param toAddresses Optional      A list of email addresses or object IDs of the contacts, leads, and users you’re sending the email to. The maximum number of email addresses allowed is 100.
      * @param ccAddresses Optional      A list of carbon copy (CC) addresses or object IDs of the contacts, leads, and users you’re sending the email to. The maximum allowed is 25.
@@ -340,7 +359,7 @@ global without sharing class JobSequenceUtilities {
     }
 
     /**
-     * This function will trim the character from the beginning and end of the string
+     * @description This function will trim the character from the beginning and end of the string
      *
      * @param value             The value to trim
      * @param character2Trim    The character to trim out of the beginning and end

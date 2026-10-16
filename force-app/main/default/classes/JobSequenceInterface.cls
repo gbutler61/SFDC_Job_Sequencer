@@ -9,18 +9,27 @@
  * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------------------------
- *
- * Implementing this interface allows you to create a customized job sequence handler. This is helpful when you need
+ */
+/**
+ * @description: **JobSequenceInterface** -- Implementing this interface allows you to create a customized job sequence handler. This is helpful when you need
  * to have custom logic (especially for functions) that will execute when a job sequence is initiated. You will need to
  * pass the name of the class that implements this class into the Sequence Job Custom Metadata record for the jobs you
  * wish to execute with the custom handler for this interface.
+ * @author: Jason Hardy
+ * @date: 10/26/2019
+ *
+ * Modification Log:
+ *   | Date:       | By:               | Change Description                                      |
+ *   | ----------- | ----------------- | ------------------------------------------------------- |
+ *   |  10/26/2019 |  Jason Hardy      | Initial Creation (original author)                      |
+ *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
+ *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
+ *
  */
 global interface JobSequenceInterface {
 
     /**
-     * This method will execute functions based on the function name defined in the "Execution Job" defined on the
+     * @description This method will execute functions based on the function name defined in the "Execution Job" defined on the
      * sequence job custom setting, which is translated into a jobs sequence object wrapper. Each function has to be
      * defined as an option in a case statement (or if statements whichever works best for you), pointing to the
      * appropriate function either in this class or in another.
@@ -39,7 +48,7 @@ global interface JobSequenceInterface {
     void executeFunction(JobSequence js, List<SObject> scope);
 
     /**
-     * This method will simply run a DML option based on how you've defined it in the Sequence Job Custom Meta data type
+     * @description This method will simply run a DML option based on how you've defined it in the Sequence Job Custom Meta data type
      *
      * @param js    The job sequence wrapped object containing the logic needed to execute the function
      * @param scope The records to be worked with
@@ -47,7 +56,7 @@ global interface JobSequenceInterface {
     void executeDML(JobSequence js, List<SObject> scope);
 
     /**
-     * If you wish some custom logic to be executed when the job sequence is completed, this is where you can do so.
+     * @description If you wish some custom logic to be executed when the job sequence is completed, this is where you can do so.
      * An example would be sending an email to let someone know that the sequence has been completed successfully.
      *
      * @param js    The job sequence wrapped object containing the logic needed to execute the function

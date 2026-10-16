@@ -9,19 +9,28 @@
  * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------------------------
- *
- * This class is responsible for handling the job sequence execution logic. It will take the handler file name that is
+ */
+/**
+ * @description: **JobSequenceExe** -- This class is responsible for handling the job sequence execution logic. It will take the handler file name that is
  * defined in the sequence job custom metadata record (translated into the job sequence wrapper object) and execute the
  * handler that extends the job sequence interface. This will help simplify the management of multiple job sequences
  * where custom code has been written for functions or base DML updates
+ * @author: Jason Hardy
+ * @date: 10/26/2019
+ *
+ * Modification Log:
+ *   | Date:       | By:               | Change Description                                      |
+ *   | ----------- | ----------------- | ------------------------------------------------------- |
+ *   |  10/26/2019 |  Jason Hardy      | Initial Creation (original author)                      |
+ *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
+ *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
+ *
  */
 global without sharing class JobSequenceExe {
     private static JobSequenceInterface handler;
 
     /**
-     * When called this function will either execute a batch or queueable job based on the job sequence record passed.
+     * @description When called this function will either execute a batch or queueable job based on the job sequence record passed.
      * These are kept separate due to the rules governing Batch and Queueable processing.
      *
      * @param js    The Job Sequence object wrapper to process
@@ -40,7 +49,7 @@ global without sharing class JobSequenceExe {
     }
 
     /**
-     * When this function is called, it will execute a job with the assumption that it is a batch execution.
+     * @description When this function is called, it will execute a job with the assumption that it is a batch execution.
      *
      * @param js        The Job Sequence object wrapper to process
      * @param scope     The records to process
@@ -62,7 +71,7 @@ global without sharing class JobSequenceExe {
     }
 
     /**
-     * When this function is called, it will execute the job with the assumption that it was called from a queueable
+     * @description When this function is called, it will execute the job with the assumption that it was called from a queueable
      * type job. It will query any appropriate records ahead of time if it's called for by the job, so no scope need be
      * passed into it.
      *
@@ -73,7 +82,7 @@ global without sharing class JobSequenceExe {
     }
 
     /**
-     * When this function is called, it will execute the job with the assumption that it was called from a queueable
+     * @description When this function is called, it will execute the job with the assumption that it was called from a queueable
      * type job. It will query any appropriate records ahead of time if it's called for by the job, so no scope need be
      * passed into it.
      *
@@ -98,7 +107,7 @@ global without sharing class JobSequenceExe {
     }
 
     /**
-     * This method will get the handler based on the handler name passed by the job sequence record
+     * @description This method will get the handler based on the handler name passed by the job sequence record
      *
      * @param js    The job sequence object wrapper
      *

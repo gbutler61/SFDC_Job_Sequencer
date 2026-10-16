@@ -5,6 +5,7 @@
     <fieldManageability>SubscriberControlled</fieldManageability>
     <inlineHelpText>If there are parameters that need to be set to run the function, enter them here. The parameters should be &quot;Parameter Name:Value&quot;. If there are multiple use a comma to separate. e.g. paramName1:value1,paramName2:value2</inlineHelpText>
     <label>Job Parameters</label>
-    <required>false</required>
-    <type>TextArea</type>
+    <length>20000</length>
+    <type>LongTextArea</type>
+    <visibleLines>5</visibleLines>
 </CustomField>

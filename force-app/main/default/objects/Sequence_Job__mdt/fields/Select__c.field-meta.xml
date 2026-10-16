@@ -6,6 +6,7 @@
     <fieldManageability>SubscriberControlled</fieldManageability>
     <inlineHelpText>What is the select statement you would like to use? DO NOT include the &#39;SELECT&#39; keyword</inlineHelpText>
     <label>Query - Select</label>
-    <required>false</required>
-    <type>TextArea</type>
+    <length>20000</length>
+    <type>LongTextArea</type>
+    <visibleLines>5</visibleLines>
 </CustomField>

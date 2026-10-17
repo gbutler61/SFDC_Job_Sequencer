@@ -1,8 +1,9 @@
 <!--
-Job Sequencer Help. The guide text is Jason Hardy's, from the original JobSequenceHelp Visualforce page
-(Copyright 2019 Jason Hardy, BSD 3-Clause; see the Legal Disclosure section). Rebuilt as an LWC by Gary Butler,
-10/16/2026, with updates for the Sequence Jobs, Settings and Scheduler tabs, sub-hourly frequencies, run tracking,
-the long text query fields, the security model, and clarified DML types.
+Job Sequencer Help. Copyright 2019 Jason Hardy; Copyright 2026 Gary Butler (BSD 3-Clause; see the Legal Disclosure
+section). Much of the guide text is Jason Hardy's, from the original JobSequenceHelp Visualforce page. Rebuilt as an
+LWC by Gary Butler, 10/16/2026, who added the Job Parameters and Variables, Running Jobs on Demand, Run History and
+Cleanup, and Security Model sections, and updated the rest for the Sequence Jobs, Settings and Scheduler tabs,
+sub-hourly frequencies, run tracking, the long text query fields and the DML types.
 -->
 <template>
     <div class="slds-grid slds-wrap slds-gutters_small help-layout">
@@ -36,10 +37,12 @@ the long text query fields, the security model, and clarified DML types.
                 <section class="help-section" data-id="about">
                     <h2 class="slds-text-heading_medium slds-m-bottom_small">About This Guide</h2>
                     <p class="slds-m-bottom_small">
-                        This guide was written by Jason Hardy for the original Job Sequencer. This fork updated it for
-                        the <strong>Sequence Jobs</strong>, <strong>Job Sequencer Settings</strong> and <strong>Job Sequence Scheduler</strong> tabs, sub-hourly frequencies, run tracking, the long
-                        text query fields, and the security model, and clarified which DML types can be used.
-                        Everything else is his original text.
+                        This guide was originally written by Jason Hardy for the Job Sequencer. Gary Butler's fork
+                        added the <strong>Job Parameters and Variables</strong>, <strong>Running Jobs on Demand</strong>,
+                        <strong>Run History and Cleanup</strong> and <strong>Security Model</strong> sections, and updated
+                        the rest for the <strong>Sequence Jobs</strong>, <strong>Job Sequencer Settings</strong> and
+                        <strong>Job Sequence Scheduler</strong> tabs, sub-hourly frequencies, run tracking, the long text
+                        query fields, and which DML types can be used.
                     </p>
                     <p>
                         To use the Job Sequencer tabs, you need the <strong>Job Sequencer Admin</strong> permission set.
@@ -95,9 +98,9 @@ the long text query fields, the security model, and clarified DML types.
                         the current org.
                         Handler Class is a list of the classes that implement JobSequenceInterface, and Function Name
                         lists the functions the chosen handler offers. The <strong>Job Parameters</strong> builder sets
-                        FieldShift field values and the query's variables (DateTimeVar or swap-in text), each for
-                        scheduled runs or for when Test.isRunningTest() is true, without writing the parameter syntax
-                        by hand; <strong>Edit as text</strong> edits the text directly.
+                        the query's variables (each with an optional value for when Test.isRunningTest() is true),
+                        FieldShift's field values and a custom handler's parameters, without writing the JSON by hand;
+                        <strong>Edit as text</strong> edits the JSON directly.
                         Saves run in the background and usually take 10 to 30 seconds. <a href="#" data-tab="Job_Sequence_Manager" onclick={handleOpenTab}>Open Sequence Jobs</a>
                     </p>
                     <p class="slds-m-bottom_small">You can also create the record in Setup:</p>
@@ -222,11 +225,9 @@ the long text query fields, the security model, and clarified DML types.
                                     fail if this box is checked.
                                 </li>
                                 <li>
-                                    <strong>Job Parameters</strong>: This is where you can define additional options to
-                                    be used when the job is executing. Each parameter set should be separated by a comma.
-                                    Each parameter set will have two pieces, the parameter name and value, separated by a
-                                    colon. Please see the "Handling Test Classes" and "Common Functions" area for more
-                                    information.
+                                    <strong>Job Parameters</strong>: The job's variables, the field values FieldShift
+                                    sets and a custom handler's parameters, saved as JSON. Please see the "Job
+                                    Parameters and Variables" and "Common Functions" areas for more information.
                                 </li>
                             </ul>
                         </li>
@@ -283,93 +284,76 @@ the long text query fields, the security model, and clarified DML types.
                     </p>
                 </section>
 
-                <section class="help-section" data-id="handling_test_classes">
-                    <h2 class="slds-text-heading_medium slds-m-bottom_small">Handling Test Classes</h2>
+                <section class="help-section" data-id="job_parameters">
+                    <h2 class="slds-text-heading_medium slds-m-bottom_small">Job Parameters and Variables</h2>
                     <p class="slds-m-bottom_small">
-                        If you need to modify your query to be more compatible with a test class (e.g. you normally ignore
-                        anything modified on the same day), you can define that as a parameter.
+                        <strong>Job Parameters</strong> hold a job's variables, the field values FieldShift sets, and any
+                        parameters a custom handler reads. They are saved as JSON in the Job Parameters field. On the
+                        Sequence Jobs tab the Job Parameters builder writes it for you; <strong>Edit as text</strong>
+                        shows the JSON.
                     </p>
+                    <h3 class="slds-text-heading_small slds-m-bottom_small">Variables</h3>
                     <p class="slds-m-bottom_small">
-                        On the Sequence Jobs tab, the Job Parameters builder writes these for you: add a
-                        <strong>Variables</strong> row, choose DateTimeVar or swap-in text, enter its value, and check
-                        <strong>Test.isRunningTest()</strong> for the value used when Test.isRunningTest() is true.
-                        Then click in Query - Where and insert the variable from the field chooser's Variables group,
-                        which lists only the variables you've defined. The syntax below is what it produces.
+                        A variable is a named, typed value the query uses as <samp>{tokens.variable}</samp>. When the job
+                        runs, each token is replaced with a SOQL literal of the variable's type, so text is quoted and
+                        escaped, lists become <samp>('A','B')</samp> and dates are formatted for SOQL. Insert a variable
+                        into Query - Where from the field chooser's Variables group, which lists only the variables
+                        you've defined. Renaming a variable in the builder renames its tokens in the Where too.
                     </p>
+                    <table class="slds-table slds-table_bordered slds-table_col-bordered slds-table_fixed-layout slds-m-bottom_small" aria-label="Variable types">
+                        <thead>
+                            <tr class="slds-line-height_reset">
+                                <th scope="col" class="slds-cell-wrap">Type</th>
+                                <th scope="col" class="slds-cell-wrap">Value</th>
+                                <th scope="col" class="slds-cell-wrap">Goes into the query as</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td class="slds-cell-wrap">Text</td><td class="slds-cell-wrap"><samp>Closed Lost</samp></td><td class="slds-cell-wrap"><samp>'Closed Lost'</samp>, quoted and escaped</td></tr>
+                            <tr><td class="slds-cell-wrap">Number, Boolean</td><td class="slds-cell-wrap"><samp>5</samp>, <samp>true</samp></td><td class="slds-cell-wrap"><samp>5</samp>, <samp>true</samp></td></tr>
+                            <tr><td class="slds-cell-wrap">Date, Date/time</td><td class="slds-cell-wrap">a date or date/time</td><td class="slds-cell-wrap"><samp>2026-10-17</samp>, <samp>2026-10-17T15:00:00Z</samp> (GMT)</td></tr>
+                            <tr><td class="slds-cell-wrap">Relative date</td><td class="slds-cell-wrap"><samp>-90 days</samp> (days, weeks, months, years)</td><td class="slds-cell-wrap">that date, counted from the day the job runs (GMT)</td></tr>
+                            <tr><td class="slds-cell-wrap">Relative date/time</td><td class="slds-cell-wrap"><samp>-2 hours</samp> (minutes up to years)</td><td class="slds-cell-wrap">that date/time, counted from when the job runs</td></tr>
+                            <tr><td class="slds-cell-wrap">Text list</td><td class="slds-cell-wrap"><samp>A, B</samp></td><td class="slds-cell-wrap"><samp>('A','B')</samp>, for use with IN</td></tr>
+                            <tr><td class="slds-cell-wrap">SOQL fragment</td><td class="slds-cell-wrap"><samp>AND IsActive = true</samp></td><td class="slds-cell-wrap">exactly as written; may be blank</td></tr>
+                        </tbody>
+                    </table>
+                    <h3 class="slds-text-heading_small slds-m-bottom_small">Values for Apex tests</h3>
                     <p class="slds-m-bottom_small">
-                        You can combine this parameter with others (e.g. fields and values defined for the fieldShift
-                        function). To do this, simply setup your parameters as follows:
+                        Each variable has a <strong>Value</strong>, used by scheduled runs, and an optional
+                        <strong>Test value</strong>, used instead when Test.isRunningTest() is true. A blank Test value
+                        means the Value is used in tests too. This lets a test class find the test data it creates,
+                        for example by including records changed today that scheduled runs skip. A Test Only job only
+                        needs Test values; any other job needs a Value for every variable except SOQL fragments.
                     </p>
-                    <pre class="code-block"><code><span class="code-line">Test.isRunningTest:"where statement changes when running a test",</span><span class="code-line">!Test.isRunningTest:"where statement changes when not running a test"</span></code></pre>
+                    <p class="slds-m-bottom_small">For example, these variables:</p>
+                    <pre class="code-block"><code>{parametersExample}</code></pre>
+                    <p class="slds-m-bottom_small">with this Query - Where:</p>
+                    <pre class="code-block"><code>{whereExample}</code></pre>
+                    <p class="slds-m-bottom_small">run on 10/17/2026 as:</p>
+                    <pre class="code-block"><code>{resolvedExample}</code></pre>
+                    <p class="slds-m-bottom_small">and, when Test.isRunningTest() is true, as:</p>
+                    <pre class="code-block"><code>{resolvedTestExample}</code></pre>
+                    <h3 class="slds-text-heading_small slds-m-bottom_small">Other tokens</h3>
+                    <ul class="slds-list_dotted slds-m-bottom_small">
+                        <li><samp>{tokens.settings}</samp>: a field from Job Sequencer Settings, inserted as written.</li>
+                        <li><samp>{tokens.label}</samp>: a custom label, inserted as written; put quotes around it for text.</li>
+                        <li><samp>{tokens.mdt}</samp>: a field of a custom metadata record, inserted as written.</li>
+                        <li><samp>{tokens.now}</samp> and <samp>{tokens.today}</samp>: when the job runs (GMT).</li>
+                        <li><samp>{tokens.userId}</samp>: the Id of the user who scheduled the job, quoted in queries.</li>
+                    </ul>
                     <p class="slds-m-bottom_small">
-                        In the example listed above, it was specifically stated that you may want to exclude records
-                        updated the same day when not running a test. You could define a single parameter:
+                        Tokens also work in field values and handler parameters, where they are inserted as plain values
+                        without quotes. Test Query and the Built query panel show the query as written and with every
+                        token filled in, and list anything that would stop the job running: an undefined variable, a
+                        value that doesn't fit its type, or a missing Value.
                     </p>
-                    <pre class="code-block"><code>!Test.isRunningTest:"AND LastModifiedDate != TODAY"</code></pre>
+                    <h3 class="slds-text-heading_small slds-m-bottom_small">Handler parameters</h3>
                     <p class="slds-m-bottom_small">
-                        If this is defined, when the sequence is running outside of a test context it would add <samp><strong>AND LastModifiedDate != TODAY</strong></samp> to your WHERE statement.
+                        A custom handler can read its own name/value parameters from <samp>js.paramStringsByStrings</samp>,
+                        with the names in lower case:
                     </p>
-                    <p class="slds-m-bottom_small">
-                        If it were running in a test context, then it would not append that string to the where
-                        statement. Thus providing your unit test with potential data since the test data your test class
-                        uses was created "today" and therefore modified today.
-                    </p>
-                    <p class="slds-m-bottom_small">
-                        An important thing to note, if you have conditions like this setup you <strong><em>MUST</em></strong> specify <strong>{placeholderToken}</strong> in the where
-                        condition! If you do not, the testing parameters will be ignored.
-                    </p>
-                    <pre class="code-block"><code>{placeholderWhereExample}</code></pre>
-                    <p class="slds-m-bottom_small">
-                        In the example highlighted above the Testing code would be populated in place of the <strong>{placeholderToken}</strong>. This means if we were to take our last example of
-                        !Test.isRunningTest, then the query that is formatted when the job sequence is run <em><strong>outside</strong> of a <strong>test</strong> context</em> would look like this:
-                    </p>
-                    <pre class="code-block"><code>StatusField = 'xyz' AND LastModifiedDate != TODAY</code></pre>
-                    <p class="slds-m-bottom_small">
-                        If it was run <em><strong>inside</strong> of a <strong>test</strong> context</em> it would look
-                        like this:
-                    </p>
-                    <pre class="code-block"><code>StatusField = 'xyz'</code></pre>
-
-                    <div class="slds-box slds-theme_shade slds-m-top_medium">
-                        <h3 class="slds-text-heading_small slds-m-bottom_small">Handling Date Time in Queries</h3>
-                        <p class="slds-m-bottom_small">
-                            There are a couple of variations that will go into handling date time variables. You will use
-                            date time variables primarily in Hourly jobs where you'll need to specify a date filter based
-                            on x minutes in the past. To accommodate this you'll need to setup your parameter and where
-                            definitions slightly differently.
-                        </p>
-                        <p class="slds-m-bottom_small">
-                            For the parameter, you will need to include a variable name called "DateTimeVar" and put an
-                            equals sign and how many minutes difference you want from the date time listed in the WHERE
-                            condition. For example, the following will setup 0 minutes difference if a test is running
-                            and -60 minutes when a test is not running:
-                        </p>
-                        <pre class="code-block"><code><span class="code-line">Test.isRunningTest:"DateTimeVar=0",</span><span class="code-line">!Test.isRunningTest:"DateTimeVar=-60"</span></code></pre>
-                        <p class="slds-m-bottom_small">
-                            <strong>Important</strong>: The parameter after the = sign <strong><em>MUST</em></strong> be
-                            in <em>MINUTES</em> (no commas). If you want to go back one day, you would input <kbd>-1440</kbd> (the number of minutes in a day, <samp>24 hours * 60 minutes/hour</samp>).
-                        </p>
-                        <p class="slds-m-bottom_small">
-                            When you're defining the WHERE clause, you will need to format it a bit differently. You are
-                            not going to include the normal {placeholderToken} that you would for other testing scenario
-                            logic swaps. Instead, you will include <samp>:DateTimeVar</samp> where the date/time
-                            comparison will take place.
-                        </p>
-                        <pre class="code-block"><code>CreatedDate &lt;= :DateTimeVar</code></pre>
-                        <p>
-                            When the job processes the ":DateTimeVar" will be replaced by the properly formatted date
-                            time adjusted based on the testing parameters.
-                        </p>
-                        <p class="slds-m-top_small">
-                            <strong>Set both values.</strong> The !Test.isRunningTest value is used in scheduled runs
-                            and the Test.isRunningTest value when Test.isRunningTest() is true. If the value for the
-                            current context is missing, :DateTimeVar isn't replaced and the query fails with "Variable
-                            does not exist". A job with only the Test.isRunningTest value works only for the Test Only
-                            frequency, like the packaged
-                            TEST_FIELDSHIFT_FUNCTION job. <samp>:g_DateTimeVar</samp> works the same as
-                            <samp>:DateTimeVar</samp>.
-                        </p>
-                    </div>
+                    <pre class="code-block"><code>{handlerExample}</code></pre>
                 </section>
 
                 <section class="help-section" data-id="common_functions">
@@ -397,21 +381,19 @@ the long text query fields, the security model, and clarified DML types.
                                         For example, if you wanted to close opportunities you could define the StageName
                                         field and the "Closed Lost" status.
                                     </p>
-                                    <pre class="code-block"><code>StageName:"Closed Lost"</code></pre>
+                                    <p class="slds-m-bottom_small">Set StageName to Closed Lost.</p>
                                 </td>
                                 <td class="slds-cell-wrap">
                                     <p class="slds-m-bottom_small">
                                         On the Sequence Jobs tab, the Job Parameters builder's <strong>Set field values</strong> rows write this for you, with an input that matches each field's type.
                                     </p>
-                                    <p class="slds-m-bottom_small">The parameters should be formatted as follows:</p>
-                                    <pre class="code-block"><code><span class="code-line">FieldApiName__c:"New Value",</span><span class="code-line">FieldApiName2__c:"New Value2"</span></code></pre>
+                                    <p class="slds-m-bottom_small">They are saved in the Job Parameters JSON as fieldValues:</p>
+                                    <pre class="code-block"><code>{fieldShiftExample}</code></pre>
                                     <p class="slds-m-bottom_small">
-                                        Multiple fields are separated by commas <em>,</em>, and each field and its value by
-                                        a colon <em>:</em>. Field names aren't case sensitive.
-                                    </p>
-                                    <p class="slds-m-bottom_small">
-                                        Values are converted to the field's type: numbers as 100 or 12.5, checkboxes as true
-                                        or false, dates as 2026-12-31, and date/times as 2026-12-31T23:00:00.000Z. Use <samp>null</samp> to blank a field. Put quotes around a value that contains a comma.
+                                        Field names aren't case sensitive. Values are converted to the field's type:
+                                        numbers as 100 or 12.5, checkboxes as true or false, dates as 2026-12-31, and
+                                        date/times as 2026-12-31T23:00:00.000Z. <samp>"blank": true</samp> clears a field,
+                                        and a value may use a variable or token, such as <samp>{tokens.today}</samp>.
                                     </p>
                                 </td>
                             </tr>
@@ -470,49 +452,51 @@ the long text query fields, the security model, and clarified DML types.
                         </li>
                         <li>
                             <strong>Skip if still running</strong>: each run is recorded as a Job Sequence Run. A run is
-                            skipped (and recorded as Skipped) while the previous run of the same frequency is still
-                            going, unless that run is older than the Run Timeout setting. The home page shows recent
+                            skipped while the previous run of the same frequency is still going (the running run's
+                            Times Skipped counts it), unless that run is older than the Run Timeout setting. The home page shows recent
                             runs; run history is kept for 30 days.
-                        </li>
-                        <li>
-                            <strong>Original schedules</strong>: frequencies scheduled before version 1.2.0 use the
-                            original per-frequency classes (e.g. JobSequenceHourly), which don't skip a run that is still
-                            going. The Scheduler marks them; unschedule and schedule again to switch them over.
                         </li>
                         <li>Jobs run as the user who scheduled them.</li>
                     </ul>
                     <p class="slds-m-bottom_small">
-                        Alternatively, run the code below each example anonymously. These use the original
-                        per-frequency classes:
+                        Alternatively, run one of these anonymously. Each schedules its frequency exactly as the
+                        Scheduler's Schedule button does, and does nothing when it is already scheduled:
                     </p>
-                    <ul class="slds-list_dotted">
-                        <li>
-                            Hourly:
-                            <pre class="code-block"><code>System.schedule('JobSequenceHourly', Label.Job_Sequence_Hourly_Cron, new JobSequenceHourly());</code></pre>
-                        </li>
-                        <li>
-                            Daily:
-                            <pre class="code-block"><code>System.schedule('JobSequenceDaily', Label.Job_Sequence_Daily_Cron, new JobSequenceDaily());</code></pre>
-                        </li>
-                        <li>
-                            Weekly:
-                            <pre class="code-block"><code>System.schedule('JobSequenceWeekly', Label.Job_Sequence_Weekly_Cron, new JobSequenceWeekly());</code></pre>
-                        </li>
-                        <li>
-                            Monthly:
-                            <pre class="code-block"><code>System.schedule('JobSequenceMonthly', Label.Job_Sequence_Monthly_Cron, new JobSequenceMonthly());</code></pre>
-                        </li>
-                        <li>
-                            Quarterly:
-                            <pre class="code-block"><code>System.schedule('JobSequenceQuarterly', Label.Job_Sequence_Quarterly_Cron, new JobSequenceQuarterly());</code></pre>
-                        </li>
-                        <li>
-                            Yearly:
-                            <pre class="code-block"><code>System.schedule('JobSequenceYearly', Label.Job_Sequence_Yearly_Cron, new JobSequenceYearly());</code></pre>
-                        </li>
-                    </ul>
-                    <p class="slds-m-bottom_small">To schedule all of the jobs listed above, run the following anonymously:</p>
+                    <pre class="code-block"><code><span class="code-line">JobSequenceUtilities.scheduleHourlyRun();</span><span class="code-line">JobSequenceUtilities.scheduleDailyRun();</span><span class="code-line">JobSequenceUtilities.scheduleWeeklyRun();</span><span class="code-line">JobSequenceUtilities.scheduleMonthlyRun();</span><span class="code-line">JobSequenceUtilities.scheduleQuarterlyRun();</span><span class="code-line">JobSequenceUtilities.scheduleYearlyRun();</span></code></pre>
+                    <p class="slds-m-bottom_small">To schedule all six of these frequencies at once:</p>
                     <pre class="code-block"><code>JobSequenceUtilities.scheduleAllRuns();</code></pre>
+                </section>
+
+                <section class="help-section" data-id="running_on_demand">
+                    <h2 class="slds-text-heading_medium slds-m-bottom_small">Running Jobs on Demand</h2>
+                    <p class="slds-m-bottom_small">
+                        One Time jobs are never scheduled; they run when you start them. Any other frequency can also be
+                        started outside its schedule. A run started this way changes records exactly as a scheduled run
+                        would, and Test.isRunningTest() is false, so variables use their Value, not their Test value.
+                        Test Only jobs only ever run inside Apex tests.
+                    </p>
+                    <h3 class="slds-text-heading_small slds-m-bottom_small">A whole frequency</h3>
+                    <p class="slds-m-bottom_small">
+                        On the <strong>Job Sequence Scheduler</strong> tab, click <strong>Run Now</strong> on the
+                        frequency's row; One Time has its own row for this. <strong>Every active job</strong> in the
+                        frequency runs, in order, as a tracked Job Sequence Run, and the run is refused while the
+                        previous run of that frequency is still going. To start a frequency anonymously instead, use the
+                        original starter, which also runs every active job in the frequency but isn't tracked as a run:
+                    </p>
+                    <pre class="code-block"><code>System.enqueueJob(new JobSequenceQueueable('One Time'));</code></pre>
+                    <h3 class="slds-text-heading_small slds-m-bottom_small">One job on its own</h3>
+                    <p class="slds-m-bottom_small">
+                        To run a single One Time job without the others, open the <strong>Sequence Jobs</strong> tab and
+                        choose <strong>Run standalone</strong> from the job's action menu. Only that job runs, and the
+                        run ends when it finishes; other One Time jobs don't run, even if they are active. The job must
+                        be active, and the run is tracked like any other and refused while a One Time run is still going.
+                        <a href="#" data-tab="Job_Sequence_Manager" onclick={handleOpenTab}>Open Sequence Jobs</a>
+                    </p>
+                    <p class="slds-m-bottom_small">
+                        To do the same anonymously, name the job after its frequency. This works for an active job of
+                        any frequency except Test Only, and isn't tracked as a run:
+                    </p>
+                    <pre class="code-block"><code>System.enqueueJob(new JobSequenceQueueable('One Time', 'MY_JOB'));</code></pre>
                 </section>
 
                 <!-- Run History and Cleanup (added for the fork) -->
@@ -579,19 +563,13 @@ the long text query fields, the security model, and clarified DML types.
                     <h2 class="slds-text-heading_medium slds-m-bottom_small">Pro Tips</h2>
                     <ul class="slds-list_dotted">
                         <li>
-                            When defining the "Value" portion of a parameter, the " is optional unless the value contains
-                            a comma. For example the following are treated exactly the same:
-                            <pre class="code-block"><code>FieldApiName__c:"New Value"</code></pre>
-                            <pre class="code-block"><code>FieldApiName__c:New Value</code></pre>
-                            The value text includes the " in this documentation for clarity, not out of necessity.
+                            A job can use as many variables as it needs, of any mix of types. Give each a name that says
+                            what it is, such as cutoff or openStages; names start with a letter and use only letters,
+                            numbers and underscores.
                         </li>
                         <li>
-                            When defining testing parameters on something other than a date time field (e.g.
-                            Test.isRunningTest:Something different), be sure to include <strong>{placeholderToken}</strong> in the "Query - Where" field
-                        </li>
-                        <li>
-                            A query can use either the {placeholderToken} test swap or :DateTimeVar, not both: when the Where
-                            contains {placeholderToken}, :DateTimeVar isn't replaced.
+                            Use a Text list variable with IN instead of writing the quotes and parentheses yourself, and a
+                            SOQL fragment with only a Test value to add a condition that applies only in Apex tests.
                         </li>
                         <li>
                             If you need something to run outside of a batch context be sure to uncheck the <strong>Batch Job</strong> box on the job sequence record!
@@ -601,7 +579,10 @@ the long text query fields, the security model, and clarified DML types.
 
                 <section class="help-section help-section_last" data-id="legal">
                     <h2 class="slds-text-heading_medium slds-m-bottom_small">Legal Disclosure</h2>
-                    <p class="slds-m-bottom_small">Copyright 2019 Jason Hardy</p>
+                    <p class="slds-m-bottom_small">
+                        Copyright 2019 Jason Hardy<br />
+                        Copyright 2026 Gary Butler (the additions and changes in this fork)
+                    </p>
                     <p class="slds-m-bottom_small">
                         Redistribution and use in source and binary forms, with or without modification, are permitted
                         provided that the following conditions are met:

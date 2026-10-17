@@ -301,6 +301,7 @@
             where-clause={form.whereClause}
             field-options={fieldOptions}
             is-field-shift={isFieldShift}
+            handler-class={form.handlerClass}
             onparameterschange={handleParametersChange}
         ></c-job-sequence-parameters-builder>
 
@@ -318,8 +319,11 @@
                     <p class="slds-text-body_small slds-text-title_bold">{builtRunTitle}</p>
                     <pre class="code-block"><code>{builtQuery.query}</code></pre>
                 </template>
-                <template lwc:if={builtQuery.note}>
-                    <p class="slds-text-body_small slds-text-color_error">{builtQuery.note}</p>
+                <template for:each={builtQuery.problems} for:item="problem">
+                    <p key={problem} class="slds-text-body_small slds-text-color_error">{problem}</p>
+                </template>
+                <template for:each={builtQuery.warnings} for:item="warning">
+                    <p key={warning} class="slds-text-body_small slds-text-color_weak">{warning}</p>
                 </template>
             </div>
         </template>
@@ -332,7 +336,7 @@
                 label="Build as if Test.isRunningTest() is true"
                 checked={testAsUnitTest}
                 onchange={handleTestAsUnitTestChange}
-                field-level-help="Checked: uses the Test.isRunningTest parameter values. Unchecked: uses the !Test.isRunningTest values, as scheduled runs do. On by default for Test Only jobs, which only run when Test.isRunningTest() is true."
+                field-level-help="Checked: variables use their Test value. Unchecked: they use their Value, as scheduled runs do. On by default for Test Only jobs, which only run when Test.isRunningTest() is true."
                 class="slds-m-left_medium test-as-unit"
             ></lightning-input>
             </template>

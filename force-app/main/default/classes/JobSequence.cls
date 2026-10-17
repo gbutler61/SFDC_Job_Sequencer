@@ -28,6 +28,8 @@
  *   |  10/16/2026 |  Gary Butler      | Order By optional in the built query                    |
  *   |  10/17/2026 |  Gary Butler      | Fix parameter parsing and the {0} test swap             |
  *   |  10/17/2026 |  Gary Butler      | Test Query: test-parameter override, queryTemplate      |
+ *   |  10/17/2026 |  Gary Butler      | Typed variables (JSON params) replace DateTimeVar/{0}   |
+ *   |  10/17/2026 |  Gary Butler      | Standalone flag: the sequence stops after this job      |
  *
  */
 global without sharing class JobSequence {
@@ -52,17 +54,25 @@ global without sharing class JobSequence {
         }
         set;
     }
-    //This property is used primarily when a date time variable needs to be used to query against if it's specific
-    //has to be hard wired like this because of the way that dynamic queries work.
-    private Datetime g_DateTimeVar {get;set;}
-
     global Id jobId {get;set;}
     //The Job Sequence Run this job belongs to; null when the sequence was started outside JobSequenceRunService
     public Id runId {get;set;}
-    //Lets Test Query build a query with the unit-test parameter values outside a test; null means use Test.isRunningTest()
+    //True when only this job runs: the sequence stops after it instead of moving on to the next job in its frequency
+    public Boolean standalone {
+        get {
+            if (this.standalone == null) this.standalone = false;
+            return this.standalone;
+        }
+        set;
+    }
+    //Lets Test Query build a query with the test values outside a test; null means use Test.isRunningTest()
     public static Boolean useTestParameters;
-    //The query as built from the record, before {0} and :DateTimeVar are filled in from the parameters
+    //The query as built from the record, with its {!...} tokens still in it
     public String queryTemplate {get;set;}
+    //The Job Parameters: field values, variables and handler parameters
+    public JobSequenceVariables.Definition jobParameters {get;set;}
+    //The values FieldShift sets, by lower-case field API name; 'null' clears the field
+    global Map<String,String> fieldValuesByField {get;set;}
     //Metrics for the current sequence job (one step of its run); each step gets a new JobSequence, so they start at 0
     public Datetime stepStartedAt {get;set;}
     public Integer recordsProcessed {
@@ -153,17 +163,26 @@ global without sharing class JobSequence {
         this.executionJob = sj.ExecutionJob__c;
         this.jobFrequency = sj.Frequency__c;
         this.jobType = sj.Type__c;
-        this.paramStringsByStrings = getParamsFromSequenceJob(sj);
-        this.query = constructQuery(sj);
-        this.queryTemplate = this.query;
+        this.jobParameters = JobSequenceVariables.parse(sj.Parameters__c);
+        JobSequenceVariables.Resolver resolver = new JobSequenceVariables.Resolver(
+                this.jobParameters, useTestParameters != null ? useTestParameters : Test.isRunningTest());
+        this.queryTemplate = constructQuery(sj);
+        this.query = resolver.resolveQuery(this.queryTemplate);
+        this.fieldValuesByField = new Map<String,String>();
+        for (JobSequenceVariables.FieldValue fv : this.jobParameters.fieldValues) {
+            if (String.isNotBlank(fv.field)) {
+                this.fieldValuesByField.put(fv.field.trim().toLowerCase(), fv.blank == true ? 'null' : resolver.resolveValue(fv.value));
+            }
+        }
+        //Handler parameters keep their original shape: lower-case names, null when there are none
+        for (String name : this.jobParameters.handlerParameters.keySet()) {
+            if (this.paramStringsByStrings == null) this.paramStringsByStrings = new Map<String,String>();
+            this.paramStringsByStrings.put(name.trim().toLowerCase(), resolver.resolveValue(this.jobParameters.handlerParameters.get(name)));
+        }
         this.sj = sj;
         this.permDelete = sj.PermDelete__c;
         this.upsertField = sj.UpsertExtIdField__c;
         this.isBatchJob = sj.IsBatchJob__c;
-        //A {0} placeholder is filled (blank when there are no parameters) so it never reaches the query
-        if (String.isNotBlank(query) && (this.paramStringsByStrings != null || query.contains('{0}'))) {
-            this.query = updateQueryFromParams(this.query, this.paramStringsByStrings == null ? new Map<String,String>() : this.paramStringsByStrings);
-        }
         this.handlerName = sj.HandlerClass__c;
     }
 
@@ -269,56 +288,9 @@ global without sharing class JobSequence {
         String limitStr = sj.Limit__c != null ? String.valueOf(sj.Limit__c) : null;
         limitStr = String.isNotBlank(limitStr) && limitStr.endsWith('.0') ? limitStr.left(limitStr.length()-2) : limitStr;
         returnQuery += String.isNotBlank(limitStr) ? ' LIMIT '+limitStr : '';
-        //{!Settings.Field__c} tokens are replaced with values from the Sequence Jobs Settings
-        return JobSequenceSettingsTokens.apply(String.format(returnQuery,new List<String>{sj.Select__c,sj.From__c,sj.Where__c,sj.OrderBy__c}));
-    }
-
-    /**
-     * @description Method will get parameters from the sequence job passed
-     *
-     * @param sj    The Sequence Job object record
-     *
-     * @return      The parameter map
-     */
-    private Map<String,String> getParamsFromSequenceJob(Sequence_Job__mdt sj) {
-        Map<String,String> returnMap;
-        if (String.isNotBlank(sj.Parameters__c)) {
-            returnMap = new Map<String,String>();
-            String paramText = JobSequenceSettingsTokens.apply(sj.Parameters__c).replaceAll('(\\r|\\n)+','').trim();
-            //Split on commas outside double quotes, then at the first colon, so values may contain commas and colons
-            for (String params : splitParameters(paramText)) {
-                Integer colon = params.indexOf(':');
-                if (colon < 1) throw new JobSequenceException('Job Parameter "' + params + '" needs a name and a value separated by a colon, e.g. Name:Value.');
-                returnMap.put(JobSequenceUtilities.trimCharacters(params.left(colon).trim().toLowerCase(),'"'),JobSequenceUtilities.trimCharacters(params.substring(colon + 1).trim(),'"'));
-            }
-        }
-        return returnMap;
-    }
-
-    /**
-     * @description Splits Job Parameters text on commas that are not inside double quotes, skipping blank entries.
-     *
-     * @param paramText The Job Parameters text
-     *
-     * @return The name:value entries, trimmed
-     */
-    @TestVisible
-    private static List<String> splitParameters(String paramText) {
-        List<String> entries = new List<String>();
-        Boolean inQuotes = false;
-        String current = '';
-        for (Integer i = 0; i < paramText.length(); i++) {
-            String ch = paramText.substring(i, i + 1);
-            if (ch == '"') inQuotes = !inQuotes;
-            if (ch == ',' && !inQuotes) {
-                if (String.isNotBlank(current)) entries.add(current.trim());
-                current = '';
-            } else {
-                current += ch;
-            }
-        }
-        if (String.isNotBlank(current)) entries.add(current.trim());
-        return entries;
+        //Tokens such as {!Var.name} and {!Settings.Field__c} are left in; JobSequenceVariables replaces them
+        return returnQuery.replace('{0}', '' + sj.Select__c).replace('{1}', '' + sj.From__c)
+                .replace('{2}', '' + sj.Where__c).replace('{3}', '' + sj.OrderBy__c);
     }
 
     /**
@@ -346,55 +318,5 @@ global without sharing class JobSequence {
             );
 
         }
-    }
-
-    /**
-     * @description This function will update the date time variable stored at the class level
-     *
-     * @param testingParam  The parameter name to read (test or non-test variant)
-     * @param paramMap  The map of parameters to be used to to update date time variable
-     */
-    @TestVisible void updateDateTimeVar(String testingParam, Map<String,String> paramMap) {
-        if (paramMap.containsKey(testingParam)) {
-            String paramVal = paramMap.get(testingParam);
-            if (paramVal.containsIgnoreCase('DateTimeVar')) {
-                this.g_DateTimeVar = System.now().addMinutes(Integer.valueOf(paramVal.split('=')[1]));
-            }
-        }
-    }
-
-    /**
-     * @description This function will update the query based on params. This is particularly useful for testing scenarios where
-     * we need to swap out values based on whether or not testing is running
-     *
-     * @param q         The query to update
-     * @param paramMap  The parameter map containing the updated value
-     *
-     * @return          The updated query
-     */
-    @TestVisible String updateQueryFromParams(String q, Map<String,String> paramMap) {
-        Boolean inTest = useTestParameters != null ? useTestParameters : Test.isRunningTest();
-        String testingParam = inTest ?
-                Label.Job_Sequence_Test_Is_Running_Param : Label.Job_Sequence_Test_Is_Not_Running_Param;
-        testingParam = testingParam.toLowerCase();
-        //Checking to see if the query has a parameter update that it's looking for
-        if (q.contains('{0}')) {
-            q = q.contains('\'') ? q.replaceAll('\'','\'\'') : q;
-            String testingParamVal = paramMap.containsKey(testingParam) ? paramMap.get(testingParam) : '';
-            //Always fill {0}: with no value for this context it becomes blank, as the help describes
-            q = String.format(q, new List<String> {testingParamVal});
-        }
-        //Processing date times that are present
-        if (q.containsIgnoreCase('DateTimeVar') && !q.contains('{0}')) {
-            updateDateTimeVar(testingParam,paramMap);
-            if (this.g_DateTimeVar != null) {
-                //Replacing the variable name in the where clause with {0} so we can input the date time as a string
-                q = q.replaceAll('(?i)\\:\\s*g_dateTimeVar|\\:\\s*dateTimeVar','{0}');
-                q = q.contains('\'') ? q.replaceAll('\'','\'\'') : q;
-                q = q.contains('{0}') ?
-                        String.format(q,new List<String>{this.g_DateTimeVar.formatGmt('yyyy-MM-dd\'T\'HH:mm:ss\'Z\'')}) : q;
-            }
-        }
-        return q;
     }
 }

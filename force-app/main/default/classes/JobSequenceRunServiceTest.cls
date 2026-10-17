@@ -1,4 +1,16 @@
 /**
+ * Copyright 2026 Gary Butler
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+/**
  * @description: **JobSequenceRunServiceTest** -- Unit tests for JobSequenceRunService and JobSequenceScheduledRun:
  * starting, skipping, abandoning and finishing runs, recording steps and metrics, and carrying the run Id through
  * the sequence chain.
@@ -10,6 +22,7 @@
  *   | ----------- | ----------------- | ------------------------------------------------------- |
  *   |  10/16/2026 |  Gary Butler      | Initial Creation                                        |
  *   |  10/16/2026 |  Gary Butler      | Steps, metrics and skip counting                        |
+ *   |  10/17/2026 |  Gary Butler      | Standalone runs                                         |
  *
  */
 @IsTest
@@ -255,5 +268,68 @@ private class JobSequenceRunServiceTest {
         Test.stopTest();
 
         Assert.areEqual(1, [SELECT COUNT() FROM Job_Sequence_Run__c WHERE Frequency__c = 'Quarterly' WITH SYSTEM_MODE], 'A Quarterly run should be recorded');
+    }
+    /**
+     * @description Verifies a standalone queueable job ends its run instead of moving on to the next job.
+     */
+    @IsTest
+    static void standaloneQueueableStopsAfterItself() {
+        Job_Sequence_Run__c run = runningRun('Daily', 0);
+        JobSequence js = new JobSequenceQueueable('Daily', 'JOBSEQ_PURGE_ERRORS', run.Id).js;
+        js.isBatchJob = false;
+
+        Test.startTest();
+        System.enqueueJob(new JobSequenceQueueable(js, true));
+        Test.stopTest();
+
+        Job_Sequence_Run__c finished = latestRun('Daily');
+        Assert.isTrue(js.standalone, 'The job should be marked standalone');
+        Assert.areEqual('Completed', finished.Status__c, 'The run should end with the standalone job: ' + finished.Detail__c);
+        Assert.areEqual(1, finished.JobsRun__c, 'Only the standalone job should run');
+    }
+
+    /**
+     * @description Verifies a standalone batch job ends its run when the batch finishes.
+     */
+    @IsTest
+    static void standaloneBatchStopsAfterItself() {
+        Job_Sequence_Run__c run = runningRun('Daily', 0);
+        JobSequence js = new JobSequenceQueueable('Daily', 'JOBSEQ_PURGE_RUNS', run.Id).js;
+
+        Test.startTest();
+        Database.executeBatch(new JobSequenceBatch(js), 200);
+        Test.stopTest();
+
+        Job_Sequence_Run__c finished = latestRun('Daily');
+        Assert.areEqual('Completed', finished.Status__c, 'The run should end with the standalone job: ' + finished.Detail__c);
+        Assert.areEqual(1, finished.JobsRun__c, 'Only the standalone job should run');
+    }
+
+    /**
+     * @description Verifies standalone runs are refused for Test Only, unknown and non-One Time jobs.
+     */
+    @IsTest
+    static void standaloneRunsAreRefused() {
+        List<String> messages = new List<String>();
+        Test.startTest();
+        for (List<String> args : new List<List<String>>{new List<String>{'Test Only', 'TEST_FIELDSHIFT_FUNCTION'}, new List<String>{'Daily', 'NO_SUCH_JOB'}}) {
+            try {
+                new JobSequenceQueueable(args[0], args[1]);
+                messages.add('started: ' + args[1]);
+            } catch (JobSequenceException e) {
+                messages.add(e.getMessage());
+            }
+        }
+        JobSequenceRunService.StartResult unknown = JobSequenceRunService.startStandaloneRun('NO_SUCH_JOB');
+        JobSequenceRunService.StartResult daily = JobSequenceRunService.startStandaloneRun('JOBSEQ_PURGE_RUNS');
+        Test.stopTest();
+
+        Assert.isTrue(messages[0].contains('Test Only'), messages[0]);
+        Assert.isTrue(messages[1].contains('NO_SUCH_JOB'), messages[1]);
+        Assert.isFalse(unknown.started, 'An unknown job should not start');
+        Assert.isTrue(unknown.reason.contains('no sequence job named'), unknown.reason);
+        Assert.isFalse(daily.started, 'A Daily job should not run standalone');
+        Assert.isTrue(daily.reason.contains('only One Time jobs'), daily.reason);
+        Assert.areEqual(0, [SELECT COUNT() FROM Job_Sequence_Run__c WITH SYSTEM_MODE], 'Nothing should be recorded');
     }
 }

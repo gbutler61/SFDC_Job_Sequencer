@@ -24,6 +24,7 @@
  *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
  *   |  10/16/2026 |  Gary Butler      | Record the run step when the batch finishes             |
  *   |  10/17/2026 |  Gary Butler      | Set jobId to the batch job Id                           |
+ *   |  10/17/2026 |  Gary Butler      | Standalone runs stop after this job                     |
  *
  */
 public without sharing class JobSequenceBatch implements Database.Batchable<SObject>,Database.Stateful, Database.AllowsCallouts {
@@ -91,7 +92,12 @@ public without sharing class JobSequenceBatch implements Database.Batchable<SObj
         //Record this job's step in its run before the next job (or the end of the run) is queued
         List<AsyncApexJob> jobs = [SELECT TotalJobItems, NumberOfErrors FROM AsyncApexJob WHERE Id = :bc.getJobId() WITH SYSTEM_MODE];
         JobSequenceRunService.recordStep(js, 'Batch', jobs.isEmpty() ? null : jobs[0].TotalJobItems, jobs.isEmpty() ? null : jobs[0].NumberOfErrors, false);
-        System.enqueueJob(new JobSequenceQueueable(js));
+        //A standalone job is the whole run; otherwise the next job in the frequency is queued
+        if (js.standalone) {
+            JobSequenceRunService.finishRun(js.runId, JobSequenceRunService.STATUS_COMPLETED, null);
+        } else {
+            System.enqueueJob(new JobSequenceQueueable(js));
+        }
     }
 
 }

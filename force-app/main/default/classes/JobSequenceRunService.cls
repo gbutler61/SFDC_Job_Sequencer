@@ -1,4 +1,16 @@
 /**
+ * Copyright 2026 Gary Butler
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+/**
  * @description: **JobSequenceRunService** -- Starts and finishes runs of a frequency's job sequence and records their
  * metrics. Each run is a Job Sequence Run with one Job Sequence Run Step per sequence job. A new run is not started
  * while the previous run of the same frequency is still going (the running run's Times Skipped is counted instead),
@@ -11,6 +23,7 @@
  *   | ----------- | ----------------- | ------------------------------------------------------- |
  *   |  10/16/2026 |  Gary Butler      | Initial Creation                                        |
  *   |  10/16/2026 |  Gary Butler      | Run steps and metrics; count skips; cleanup via jobs    |
+ *   |  10/17/2026 |  Gary Butler      | Standalone runs of one One Time job                     |
  *
  */
 public without sharing class JobSequenceRunService {
@@ -21,6 +34,7 @@ public without sharing class JobSequenceRunService {
     public static final String STATUS_ABANDONED = 'Abandoned';
 
     @TestVisible private static final Integer DEFAULT_TIMEOUT_MINUTES = 60;
+    public static final String ONE_TIME = 'One Time';
     private static final Integer DETAIL_LENGTH = 255;
 
     /**
@@ -42,6 +56,46 @@ public without sharing class JobSequenceRunService {
      * @return Whether the run started; the new run, or the run still going when it was skipped; and why not
      */
     public static StartResult startRun(String frequency) {
+        return start(frequency, null, null);
+    }
+
+    /**
+     * @description Starts a standalone run of one active One Time sequence job: only that job runs, and the run ends
+     * when it finishes. Refused, like any run, while a One Time run is still going.
+     *
+     * @param developerName The job's API name
+     *
+     * @return Whether the run started; the new run, or the run still going; and why not
+     */
+    public static StartResult startStandaloneRun(String developerName) {
+        List<Sequence_Job__mdt> jobs = [
+                SELECT DeveloperName, MasterLabel, Frequency__c, Active__c FROM Sequence_Job__mdt
+                WHERE DeveloperName = :developerName WITH SYSTEM_MODE
+        ];
+        if (jobs.isEmpty() || jobs[0].Frequency__c != ONE_TIME) {
+            StartResult refused = new StartResult();
+            refused.reason = jobs.isEmpty() ? 'no sequence job named ' + developerName + ' exists.'
+                    : 'only One Time jobs can be run on their own; ' + developerName + ' is ' + jobs[0].Frequency__c + '.';
+            return refused;
+        }
+        if (jobs[0].Active__c != true) {
+            StartResult refused = new StartResult();
+            refused.reason = jobs[0].MasterLabel + ' is not active. Activate it first.';
+            return refused;
+        }
+        return start(ONE_TIME, developerName, 'Standalone run of ' + jobs[0].MasterLabel + ' (' + developerName + ').');
+    }
+
+    /**
+     * @description Starts a run of the frequency's sequence, or of one standalone job in it.
+     *
+     * @param frequency     The frequency
+     * @param developerName The standalone job's API name, or null to run the whole sequence
+     * @param detail        Recorded on the run, or null
+     *
+     * @return Whether the run started; the new run, or the run still going; and why not
+     */
+    private static StartResult start(String frequency, String developerName, String detail) {
         StartResult result = new StartResult();
         Datetime now = Datetime.now();
 
@@ -61,7 +115,7 @@ public without sharing class JobSequenceRunService {
             update as system stillRunning;
             result.run = stillRunning;
             result.reason = stillRunning.Name + ' is still running.';
-            System.debug('JobSequenceRunService()::startRun:  skippedFor: ' + stillRunning.Name);
+            System.debug('JobSequenceRunService()::start:  skippedFor: ' + stillRunning.Name);
             return result;
         }
 
@@ -73,13 +127,15 @@ public without sharing class JobSequenceRunService {
                 RecordsProcessed__c = 0,
                 RecordsFailed__c = 0,
                 ErrorsLogged__c = 0,
-                TimesSkipped__c = 0
+                TimesSkipped__c = 0,
+                Detail__c = detail
         );
         insert as system run;
-        System.enqueueJob(new JobSequenceQueueable(frequency, run.Id));
+        System.enqueueJob(developerName == null ? new JobSequenceQueueable(frequency, run.Id)
+                : new JobSequenceQueueable(frequency, developerName, run.Id));
         result.started = true;
         result.run = run;
-        System.debug('JobSequenceRunService()::startRun:  run: ' + run);
+        System.debug('JobSequenceRunService()::start:  run: ' + run);
         return result;
     }
 

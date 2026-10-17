@@ -189,7 +189,8 @@
                                 <lightning-button variant="base" label="View all" onclick={handleOpenRuns}></lightning-button>
                             </div>
                             <template lwc:if={hasRecentRuns}>
-                                <table class="slds-table slds-table_bordered slds-table_cell-buffer slds-m-top_small" aria-label="Recent runs">
+                                <div class="table-scroll slds-m-top_small">
+                                <table class="slds-table slds-table_bordered recent-runs" aria-label="Recent runs">
                                     <thead>
                                         <tr class="slds-line-height_reset">
                                             <th scope="col">Run</th>
@@ -219,6 +220,7 @@
                                         </template>
                                     </tbody>
                                 </table>
+                                </div>
                             </template>
                             <template lwc:else>
                                 <p class="slds-text-color_weak slds-m-top_small">No runs yet. Runs started from the Job Sequence Scheduler appear here.</p>

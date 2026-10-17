@@ -26,6 +26,7 @@
  *   |  10/16/2026 |  Gary Butler      | Carry run Id; finish the Job Sequence Run at chain end  |
  *   |  10/16/2026 |  Gary Butler      | Record run steps for queueable jobs and failures        |
  *   |  10/17/2026 |  Gary Butler      | Set jobId so queueable error emails are sent; debug     |
+ *   |  10/17/2026 |  Gary Butler      | Standalone runs of one named job                        |
  *
  */
 global with sharing class JobSequenceQueueable implements Queueable, Database.AllowsCallouts {
@@ -51,7 +52,11 @@ global with sharing class JobSequenceQueueable implements Queueable, Database.Al
                     JobSequenceRunService.recordStep(js, 'Queueable', null, null, false);
                     //Setting up the next run after the queueable job has finished running
                     //Batch jobs will automatically kick off this same function in their finish context
-                    if (Limits.getQueueableJobs() < Limits.getLimitQueueableJobs()) System.enqueueJob(new JobSequenceQueueable(js));
+                    if (js.standalone) {
+                        JobSequenceRunService.finishRun(js.runId, JobSequenceRunService.STATUS_COMPLETED, null);
+                    } else if (Limits.getQueueableJobs() < Limits.getLimitQueueableJobs()) {
+                        System.enqueueJob(new JobSequenceQueueable(js));
+                    }
                 }
             } catch(Exception e) {
                 System.debug(LoggingLevel.ERROR, 'JobSequenceQueueable()::execute:  e: ' + e);
@@ -79,6 +84,60 @@ global with sharing class JobSequenceQueueable implements Queueable, Database.Al
     global JobSequenceQueueable(String frequency) {
         this.js = getNextJob(frequency,null);
     }
+
+    /**
+     * @description Runs one active sequence job on its own: the sequence stops after it, so no other job in its
+     * frequency runs. Example code to run anonymously:
+     *
+     * System.enqueueJob(new JobSequenceQueueable('One Time', 'MY_JOB'));
+     *
+     * @param frequency     The job's frequency
+     * @param developerName The job's API name
+     *
+     * @throws JobSequenceException when the frequency is Test Only, or no active job by that name has the frequency
+     */
+    global JobSequenceQueueable(String frequency, String developerName) {
+        this.js = getStandaloneJob(frequency, developerName);
+    }
+
+    /**
+     * @description Runs one active sequence job on its own as part of a tracked Job Sequence Run.
+     *
+     * @param frequency     The job's frequency
+     * @param developerName The job's API name
+     * @param runId         The Job Sequence Run the job belongs to
+     *
+     * @throws JobSequenceException when the frequency is Test Only, or no active job by that name has the frequency
+     */
+    public JobSequenceQueueable(String frequency, String developerName, Id runId) {
+        this.js = getStandaloneJob(frequency, developerName);
+        this.js.runId = runId;
+    }
+
+    /**
+     * @description Loads one active sequence job and marks it standalone.
+     *
+     * @param frequency     The job's frequency
+     * @param developerName The job's API name
+     *
+     * @return The job sequence
+     *
+     * @throws JobSequenceException when the frequency is Test Only, or no active job by that name has the frequency
+     */
+    private JobSequence getStandaloneJob(String frequency, String developerName) {
+        if (String.isBlank(frequency) || frequency.equalsIgnoreCase('Test Only')) {
+            throw new JobSequenceException('Test Only jobs run only in Apex tests and cannot be run on their own.');
+        }
+        for (Sequence_Job__mdt sj : (List<Sequence_Job__mdt>) Database.query(constructSequenceJobQuery(frequency), AccessLevel.SYSTEM_MODE)) {
+            if (sj.DeveloperName == developerName) {
+                JobSequence standaloneJob = new JobSequence(sj);
+                standaloneJob.standalone = true;
+                return standaloneJob;
+            }
+        }
+        throw new JobSequenceException('No active ' + frequency + ' sequence job named ' + developerName + ' was found.');
+    }
+
 
     /**
      * @description Constructs a job sequence queueable for a run started by JobSequenceRunService. The run Id is

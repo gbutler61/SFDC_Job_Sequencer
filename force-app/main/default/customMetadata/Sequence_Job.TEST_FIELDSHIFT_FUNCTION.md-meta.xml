@@ -52,8 +52,15 @@
     </values>
     <values>
         <field>Parameters__c</field>
-        <value xsi:type="xsd:string">AboutMe:This is a test string to update about me,
-Test.isRunningTest:DateTimeVar=-1</value>
+        <value xsi:type="xsd:string">{
+  &quot;version&quot;: 1,
+  &quot;fieldValues&quot;: [
+    { &quot;field&quot;: &quot;AboutMe&quot;, &quot;value&quot;: &quot;This is a test string to update about me&quot; }
+  ],
+  &quot;variables&quot;: [
+    { &quot;name&quot;: &quot;since&quot;, &quot;type&quot;: &quot;RelativeDateTime&quot;, &quot;testValue&quot;: &quot;-1 minutes&quot; }
+  ]
+}</value>
     </values>
     <values>
         <field>PermDelete__c</field>
@@ -73,6 +80,6 @@ Test.isRunningTest:DateTimeVar=-1</value>
     </values>
     <values>
         <field>Where__c</field>
-        <value xsi:type="xsd:string">LastModifiedDate &gt;= :g_DateTimeVar</value>
+        <value xsi:type="xsd:string">LastModifiedDate &gt;= {!Var.since}</value>
     </values>
 </CustomMetadata>

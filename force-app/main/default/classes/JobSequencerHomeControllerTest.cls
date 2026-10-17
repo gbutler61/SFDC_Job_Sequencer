@@ -1,4 +1,16 @@
 /**
+ * Copyright 2026 Gary Butler
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+/**
  * @description: **JobSequencerHomeControllerTest** -- Unit tests for JobSequencerHomeController: schedule metrics,
  * error trends and lists, and recent runs.
  * @author: Gary Butler
@@ -25,7 +37,7 @@ private class JobSequencerHomeControllerTest {
 
         Assert.isTrue(data.sequencerEnabled, 'The sequencer should default to enabled');
         Assert.areEqual(0, data.scheduledCount, 'Nothing should be scheduled');
-        Assert.areEqual(JobSequenceSchedulerController.FREQUENCIES.size(), data.frequencyCount, 'Every frequency should be counted');
+        Assert.areEqual(JobSequenceSchedulerController.FREQUENCIES.size(), data.frequencyCount, 'Every schedulable frequency should be counted');
         Assert.isNull(data.nextRunTime, 'There should be no next run');
         Assert.areEqual(0, data.errorsLast7Days, 'There should be no recent errors');
         Assert.areEqual(JobSequencerHomeController.CHART_DAYS, data.errorsByDay.size(), 'The chart should have a bar for every day');

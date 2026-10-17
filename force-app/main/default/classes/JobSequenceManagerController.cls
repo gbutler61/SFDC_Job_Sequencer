@@ -1,4 +1,16 @@
 /**
+ * Copyright 2026 Gary Butler
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+/**
  * @description: **JobSequenceManagerController** -- Apex controller for the Sequence Jobs tab. Lists Sequence Job
  * records and saves, activates, deactivates and reorders them through Apex metadata deployments; also builds and
  * runs a job's query the way the sequencer does, to test it before saving.
@@ -11,6 +23,8 @@
  *   |  10/16/2026 |  Gary Butler      | Initial Creation                                        |
  *   |  10/16/2026 |  Gary Butler      | Object and field lists for the query wizard             |
  *   |  10/17/2026 |  Gary Butler      | Handler/function lists; field types for the builder     |
+ *   |  10/17/2026 |  Gary Butler      | Typed variables: build, check and test JSON parameters  |
+ *   |  10/17/2026 |  Gary Butler      | Run a One Time job standalone                           |
  *
  */
 public with sharing class JobSequenceManagerController {
@@ -102,9 +116,8 @@ public with sharing class JobSequenceManagerController {
         @AuraEnabled public String queryHint;
         @AuraEnabled public String orgName;
         @AuraEnabled public Boolean asUnitTest;
-        //The query with :DateTimeVar and {0} still in it; null when the job uses neither
+        //The query with its {!...} tokens still in it; null when it has none
         @AuraEnabled public String queryWithVariables;
-        //Set when a variable had to be filled in from the other context (or the current time) to check the query
         @AuraEnabled public String queryNote;
     }
 
@@ -199,6 +212,27 @@ public with sharing class JobSequenceManagerController {
     }
 
     /**
+     * @description Runs one active One Time job on its own, as a tracked Job Sequence Run: no other job in the
+     * frequency runs.
+     *
+     * @param developerName The job's API name
+     *
+     * @return The Id of the Job Sequence Run
+     *
+     * @throws AuraHandledException when the job isn't an active One Time job, the sequencer is turned off, or a One
+     * Time run is still going
+     */
+    @AuraEnabled
+    public static Id runStandalone(String developerName) {
+        JobSequenceRunService.StartResult result = JobSequenceRunService.startStandaloneRun(developerName);
+        if (!result.started) {
+            throw newAuraException('The job was not started because ' + result.reason);
+        }
+        System.debug('JobSequenceManagerController()::runStandalone:  runId: ' + result.run.Id);
+        return result.run.Id;
+    }
+
+    /**
      * @description Moves a Sequence Job one place earlier or later within its frequency by swapping its Order with
      * the neighboring job's.
      *
@@ -238,12 +272,12 @@ public with sharing class JobSequenceManagerController {
     }
 
     /**
-     * @description Builds the job's query exactly as the sequencer would, with {0} and :DateTimeVar filled in from the
-     * parameters (and also returns it as written, with those variables, when they are used), checks the filled-in
-     * query runs, and counts the matching rows up to a limit. No record data is returned.
+     * @description Builds the job's query exactly as the sequencer would, with its tokens resolved (and also returns
+     * it as written, with the tokens, when it has any), checks the resolved query runs, and counts the matching rows up
+     * to a limit. No record data is returned.
      *
      * @param jobJson     The sequence job, serialized as JSON
-     * @param asUnitTest  True to use the unit-test parameter values (Test.isRunningTest) instead of the normal-run ones
+     * @param asUnitTest  True to use the variables' test values, as when Test.isRunningTest() is true
      *
      * @return The query, whether it is valid, and the matching row count or the error
      */
@@ -275,7 +309,7 @@ public with sharing class JobSequenceManagerController {
             result.moreThanLimit = count > TEST_QUERY_COUNT_LIMIT;
             result.matchingRows = Math.min(count, TEST_QUERY_COUNT_LIMIT);
             result.isValid = true;
-            result.queryHint = result.queryNote == null ? getUnusedParameterHint(job) : null;
+            result.queryHint = getParameterHint(job);
         } catch (Exception e) {
             result.isValid = false;
             result.errorMessage = e.getMessage();
@@ -283,18 +317,12 @@ public with sharing class JobSequenceManagerController {
                 result.queryHint = 'The query is checked against this org (' + result.orgName + '). A field or relationship that exists '
                         + 'in another org may not exist here; for example, RecordType is only available on objects that have record types.';
             } else {
-                result.queryHint = getUnusedParameterHint(job);
+                result.queryHint = getParameterHint(job);
             }
         }
         System.debug('JobSequenceManagerController()::testQuery:  result: ' + result);
         return result;
     }
-
-    //:DateTimeVar or :g_DateTimeVar in a built query
-    private static final Pattern DATETIME_VARIABLE = Pattern.compile('(?i):\\s*(g_)?datetimevar\\b');
-    //The minutes each context's DateTimeVar parameter sets
-    private static final Pattern NORMAL_MINUTES = Pattern.compile('(?i)!test\\.isrunningtest\\s*:\\s*"?\\s*datetimevar\\s*=\\s*(-?\\d+)');
-    private static final Pattern TEST_MINUTES = Pattern.compile('(?i)(?<!!)test\\.isrunningtest\\s*:\\s*"?\\s*datetimevar\\s*=\\s*(-?\\d+)');
 
     /**
      * @description A job's query as written (with variables) and with every variable filled in.
@@ -307,14 +335,14 @@ public with sharing class JobSequenceManagerController {
     }
 
     /**
-     * @description Builds the job's query for a scheduled run or for when Test.isRunningTest() is true. When that context leaves :DateTimeVar
-     * unset, it is filled in from the other context's DateTimeVar value (or the current time when neither is set) so
-     * the query can still be checked, and the note says so.
+     * @description Builds the job's query for a scheduled run or for when Test.isRunningTest() is true.
      *
      * @param job        The job
-     * @param asUnitTest True to use the unit-test parameter values
+     * @param asUnitTest True to use the variables' test values
      *
-     * @return Both versions of the query and any note
+     * @return The query as written and resolved
+     *
+     * @throws JobSequenceException when a token cannot be resolved
      */
     private static Desymbolized desymbolize(SequenceJob job, Boolean asUnitTest) {
         Sequence_Job__mdt sj = toRecord(job);
@@ -329,26 +357,7 @@ public with sharing class JobSequenceManagerController {
         }
         result.withVariables = js.queryTemplate;
         result.filledIn = js.query;
-        result.hasVariables = DATETIME_VARIABLE.matcher(result.withVariables).find() || result.withVariables.contains('{0}');
-
-        if (DATETIME_VARIABLE.matcher(result.filledIn).find()) {
-            String params = String.isBlank(job.parameters) ? '' : job.parameters;
-            Matcher other = (asUnitTest == true ? NORMAL_MINUTES : TEST_MINUTES).matcher(params);
-            String thisContext = asUnitTest == true ? 'Test.isRunningTest() is true' : 'scheduled runs (Test.isRunningTest() is false)';
-            Integer minutes = 0;
-            if (other.find()) {
-                minutes = Integer.valueOf(other.group(1));
-                result.note = 'No DateTimeVar value is set for when ' + thisContext + ', so the '
-                        + (asUnitTest == true ? '!Test.isRunningTest' : 'Test.isRunningTest') + ' value (' + minutes
-                        + ' minutes) was used to fill in :DateTimeVar for this check. When ' + thisContext
-                        + ', the job would fail with "Variable does not exist".';
-            } else {
-                result.note = 'No DateTimeVar value is set, so the current time was used to fill in :DateTimeVar for this check. '
-                        + 'When the job runs it would fail with "Variable does not exist".';
-            }
-            String literal = Datetime.now().addMinutes(minutes).formatGmt('yyyy-MM-dd\'T\'HH:mm:ss\'Z\'');
-            result.filledIn = DATETIME_VARIABLE.matcher(result.filledIn).replaceAll(literal);
-        }
+        result.hasVariables = result.withVariables.contains('{!');
         return result;
     }
 
@@ -361,22 +370,28 @@ public with sharing class JobSequenceManagerController {
         @AuraEnabled public Boolean asUnitTest;
         @AuraEnabled public String errorMessage;
         @AuraEnabled public String note;
+        //Parameter problems that stop a save, and warnings
+        @AuraEnabled public List<String> problems;
+        @AuraEnabled public List<String> warnings;
     }
 
     /**
-     * @description Builds the job's query the way the sequencer would, without running it: as written (with
-     * :DateTimeVar and {0}) and with those filled in from the parameters for a scheduled run or a test run.
+     * @description Builds the job's query the way the sequencer would, without running it: as written (with its
+     * tokens) and resolved for a scheduled run or a test run, with the parameter problems and warnings.
      *
      * @param jobJson    The sequence job, serialized as JSON
-     * @param asUnitTest True to fill in the unit-test (Test.isRunningTest) values instead of the normal-run ones
+     * @param asUnitTest True to use the variables' test values, as when Test.isRunningTest() is true
      *
-     * @return Both versions of the query (queryWithVariables is null when the job uses no variables), or the error
+     * @return Both versions of the query (queryWithVariables is null when it has no tokens), or the error
      */
     @AuraEnabled
     public static BuiltQuery buildQuery(String jobJson, Boolean asUnitTest) {
         SequenceJob job = parseJob(jobJson);
         BuiltQuery built = new BuiltQuery();
         built.asUnitTest = asUnitTest == true;
+        JobSequenceVariables.Issues issues = checkParameters(job);
+        built.problems = issues.problems;
+        built.warnings = issues.warnings;
         if (String.isBlank(job.fromObject)) {
             return built;
         }
@@ -386,85 +401,77 @@ public with sharing class JobSequenceManagerController {
             built.queryWithVariables = query.hasVariables ? query.withVariables : null;
             built.note = query.note;
         } catch (Exception e) {
-            built.errorMessage = e.getMessage();
+            //A problem already listed isn't repeated as the build error
+            built.errorMessage = built.problems.contains(e.getMessage()) ? null : e.getMessage();
         }
         return built;
     }
 
-    //DateTimeVar set for scheduled runs (!Test.isRunningTest) and for test runs (Test.isRunningTest, not preceded by !)
-    private static final Pattern NORMAL_DATETIMEVAR = Pattern.compile('(?i)!test\\.isrunningtest\\s*:\\s*"?\\s*datetimevar\\s*=');
-    private static final Pattern TEST_DATETIMEVAR = Pattern.compile('(?i)(?<!!)test\\.isrunningtest\\s*:\\s*"?\\s*datetimevar\\s*=');
-
     /**
-     * @description A mismatch between the Job Parameters and the Where.
-     */
-    @TestVisible
-    private class ParameterIssue {
-        public String message;
-        //True when scheduled runs of the job would fail or silently do nothing, so the job shouldn't be saved
-        public Boolean blocksSave;
-
-        /**
-         * @description Creates an issue.
-         *
-         * @param message    What is wrong
-         * @param blocksSave Whether the job should not be saved like this
-         */
-        public ParameterIssue(String message, Boolean blocksSave) {
-            this.message = message;
-            this.blocksSave = blocksSave;
-        }
-    }
-
-    /**
-     * @description Explains a mismatch between the Job Parameters and the Where: test or DateTimeVar values the Where
-     * never uses, or a :DateTimeVar in the Where that the parameters don't set for scheduled runs or test runs.
+     * @description Checks the job's parameters: valid JSON, variable names, types and values, every token in the
+     * query resolving in each context the job runs in, and FieldShift's field values naming updateable fields.
      *
      * @param job The job
      *
-     * @return The issue, or null when the parameters and the Where match
+     * @return The problems (stop the save) and warnings
      */
     @TestVisible
-    private static ParameterIssue getParameterIssue(SequenceJob job) {
-        String params = String.isBlank(job.parameters) ? '' : job.parameters;
-        String lowerParams = params.toLowerCase();
-        String whereText = String.isBlank(job.whereClause) ? '' : job.whereClause.toLowerCase();
-        Boolean whereUsesVariable = whereText.contains(':datetimevar') || whereText.contains(':g_datetimevar');
-        Boolean normalSet = NORMAL_DATETIMEVAR.matcher(params).find();
-        Boolean testSet = TEST_DATETIMEVAR.matcher(params).find();
-        Boolean testOnly = job.frequency == 'Test Only';
+    private static JobSequenceVariables.Issues checkParameters(SequenceJob job) {
+        JobSequenceVariables.Issues issues = new JobSequenceVariables.Issues();
+        JobSequenceVariables.Definition definition;
+        try {
+            definition = JobSequenceVariables.parse(job.parameters);
+        } catch (JobSequenceException e) {
+            issues.problems.add(e.getMessage());
+            return issues;
+        }
+        String queryText = String.join(new List<String>{
+            job.selectFields == null ? '' : job.selectFields,
+            job.whereClause == null ? '' : job.whereClause,
+            job.orderBy == null ? '' : job.orderBy
+        }, ' ');
+        issues = JobSequenceVariables.check(definition, queryText, job.frequency == 'Test Only');
 
-        if (whereUsesVariable && !normalSet) {
-            return new ParameterIssue('Query - Where uses :DateTimeVar, but the Job Parameters don\'t set it for scheduled runs '
-                    + '(!Test.isRunningTest:"DateTimeVar=..."), so scheduled runs fail with "Variable does not exist". '
-                    + 'Add a DateTimeVar variable row with Test.isRunningTest() unchecked.', !testOnly);
+        Boolean fieldShift = job.jobType == 'Function' && job.executionJob != null && job.executionJob.equalsIgnoreCase('FieldShift');
+        if (!fieldShift) {
+            if (!definition.fieldValues.isEmpty()) {
+                issues.warnings.add('Field values are only used by the FieldShift function; this job ignores them.');
+            }
+            return issues;
         }
-        if (whereUsesVariable && !testSet) {
-            return new ParameterIssue('Query - Where uses :DateTimeVar, but the Job Parameters don\'t set it for when '
-                    + 'Test.isRunningTest() is true (Test.isRunningTest:"DateTimeVar=..."), so Apex tests that run this job will fail.', false);
+        if (definition.fieldValues.isEmpty()) {
+            issues.problems.add('FieldShift needs at least one field value to set.');
+            return issues;
         }
-        Boolean hasTestKeys = lowerParams.contains('test.isrunningtest');
-        if (hasTestKeys && (normalSet || testSet) && !whereUsesVariable) {
-            return new ParameterIssue('The Job Parameters set DateTimeVar, but Query - Where has no :DateTimeVar condition (e.g. '
-                    + 'LastModifiedDate >= :DateTimeVar), so the value is never used.', true);
+        Schema.SObjectType objectType = String.isBlank(job.fromObject) ? null : Schema.getGlobalDescribe().get(job.fromObject.trim());
+        Map<String, Schema.SObjectField> fields = objectType == null ? null : objectType.getDescribe().fields.getMap();
+        Set<String> seen = new Set<String>();
+        for (JobSequenceVariables.FieldValue fv : definition.fieldValues) {
+            if (String.isBlank(fv.field)) {
+                issues.problems.add('Every field value needs a field.');
+            } else if (!seen.add(fv.field.trim().toLowerCase())) {
+                issues.problems.add(fv.field + ' is set twice in the field values.');
+            } else if (fields != null && (!fields.containsKey(fv.field.trim().toLowerCase())
+                    || !fields.get(fv.field.trim().toLowerCase()).getDescribe().isUpdateable())) {
+                issues.problems.add(fv.field + ' is not an updateable field on ' + job.fromObject + ', so FieldShift cannot set it.');
+            }
         }
-        if (hasTestKeys && !normalSet && !testSet && !whereText.contains('{0}')) {
-            return new ParameterIssue('The Job Parameters set test conditions, but Query - Where has no {0} placeholder, so they are not added.', true);
-        }
-        return null;
+        return issues;
     }
 
     /**
-     * @description The parameter mismatch message for Test Query, if any.
+     * @description The parameter problems and warnings, as one hint for Test Query.
      *
      * @param job The job
      *
-     * @return The message, or null
+     * @return The hint, or null when there is nothing to say
      */
     @TestVisible
-    private static String getUnusedParameterHint(SequenceJob job) {
-        ParameterIssue issue = getParameterIssue(job);
-        return issue == null ? null : issue.message;
+    private static String getParameterHint(SequenceJob job) {
+        JobSequenceVariables.Issues issues = checkParameters(job);
+        List<String> messages = new List<String>(issues.problems);
+        messages.addAll(issues.warnings);
+        return messages.isEmpty() ? null : String.join(messages, ' ');
     }
 
     /**
@@ -672,11 +679,8 @@ public with sharing class JobSequenceManagerController {
         if (String.isNotBlank(job.upsertExtIdField) && job.upsertExtIdField.equalsIgnoreCase('id')) {
             problems.add('Do not use Id as the Upsert External Id Field; Salesforce matches on Id automatically.');
         }
-        //Parameters the Where never uses do nothing, and a :DateTimeVar normal runs never set makes them fail
-        ParameterIssue parameterIssue = getParameterIssue(job);
-        if (parameterIssue != null && parameterIssue.blocksSave) {
-            problems.add(parameterIssue.message);
-        }
+        //Every token must resolve and every value must fit its type, in each context the job runs in
+        problems.addAll(checkParameters(job).problems);
         return problems;
     }
 

@@ -1,98 +1,110 @@
 /**
- * @description jobSequenceParametersBuilder -- Builds a Sequence Job's Job Parameters without learning their syntax:
- * FieldShift field values (typed inputs per field) and variable rows for the two variables the engine supports,
- * DateTimeVar (used as :DateTimeVar) and swap-in text (used as {0}), each with a value for scheduled runs or for when
- * Test.isRunningTest() is true. It reads existing parameters back into rows and keeps anything it doesn't recognize.
- * The Where is never rewritten; variables are inserted with the editor's field chooser. Fires "parameterschange" with
- * { parameters, whereClause }.
+ * Copyright 2026 Gary Butler
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+/**
+ * @description jobSequenceParametersBuilder -- Builds a Sequence Job's Job Parameters (JSON) without writing it by hand:
+ * FieldShift field values (typed inputs per field), typed variables used in the query as {!Var.name}, each with an
+ * optional value for when Test.isRunningTest() is true, and name/value handler parameters for custom handlers.
+ * Renaming a variable renames its tokens in Query - Where. Fires "parameterschange" with { parameters, whereClause }.
  * @author Gary Butler
  * @date 10/17/2026
  */
 import { LightningElement, api } from 'lwc';
 
-const TEST_KEY = 'test.isrunningtest';
-const NOT_TEST_KEY = '!test.isrunningtest';
-const DATETIME_VAR = /^DateTimeVar\s*=\s*(-?\d+)$/i;
-const NUMBER_TYPES = ['INTEGER', 'DOUBLE', 'CURRENCY', 'PERCENT', 'LONG'];
-const UNIT_MINUTES = { minutes: 1, hours: 60, days: 1440 };
-const VARIABLE_DATETIME = 'DateTimeVar';
-const VARIABLE_SWAP = '{0}';
+const NUMBER_FIELD_TYPES = ['INTEGER', 'DOUBLE', 'CURRENCY', 'PERCENT', 'LONG'];
+const NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
+const RELATIVE_PATTERN = /^\s*([+-]?\d+)\s*(minute|hour|day|week|month|year)s?\s*$/i;
+const DEFAULT_HANDLER = 'JobSequenceDefaultHandler';
+const DEFAULT_UNIT = 'days';
+
+const TYPE_OPTIONS = [
+    { label: 'Text', value: 'Text' },
+    { label: 'Number', value: 'Number' },
+    { label: 'Boolean', value: 'Boolean' },
+    { label: 'Date', value: 'Date' },
+    { label: 'Date/time', value: 'DateTime' },
+    { label: 'Relative date', value: 'RelativeDate' },
+    { label: 'Relative date/time', value: 'RelativeDateTime' },
+    { label: 'Text list (for IN)', value: 'TextList' },
+    { label: 'SOQL fragment', value: 'SoqlFragment' }
+];
+const DATE_UNITS = ['days', 'weeks', 'months', 'years'];
+const DATETIME_UNITS = ['minutes', 'hours', 'days', 'weeks', 'months', 'years'];
+const TYPE_HELP = {
+    Text: 'Inserted as a quoted, escaped string, e.g. \'Closed Lost\'.',
+    Number: 'Inserted as a number, e.g. 5.',
+    Boolean: 'Inserted as true or false.',
+    Date: 'Inserted as a date, e.g. 2026-10-17.',
+    DateTime: 'Inserted as a GMT date/time, e.g. 2026-10-17T15:00:00Z.',
+    RelativeDate: 'Counted from the day the job runs; negative is the past, e.g. -90 days.',
+    RelativeDateTime: 'Counted from when the job runs; negative is the past, e.g. -2 hours.',
+    TextList: 'Comma-separated; inserted as (\'A\',\'B\') for use with IN.',
+    SoqlFragment: 'Inserted exactly as written, e.g. AND IsActive = true. May be blank.'
+};
 
 /**
- * @description Splits Job Parameters text on commas outside double quotes, the way the engine does.
- * @param {String} text The parameters text
- * @returns {String[]} The trimmed, non-blank entries
+ * @description Reads a relative amount like "-90 days".
+ * @param {String} value The stored value
+ * @param {String} fallbackUnit The unit to show when the value has none
+ * @returns {Object} { amount, unit } with a plural unit; amount is null when not set
  */
-function splitParameters(text) {
-    const entries = [];
-    let inQuotes = false;
-    let current = '';
-    for (const ch of (text || '').replace(/[\r\n]+/g, '')) {
-        if (ch === '"') inQuotes = !inQuotes;
-        if (ch === ',' && !inQuotes) {
-            if (current.trim()) entries.push(current.trim());
-            current = '';
-        } else {
-            current += ch;
-        }
-    }
-    if (current.trim()) entries.push(current.trim());
-    return entries;
+function readRelative(value, fallbackUnit) {
+    const match = RELATIVE_PATTERN.exec(value || '');
+    return match ? { amount: Number(match[1]), unit: `${match[2].toLowerCase()}s` } : { amount: null, unit: fallbackUnit };
 }
 
 /**
- * @description Removes one pair of surrounding double quotes, as the engine does.
- * @param {String} value The value
- * @returns {String} The value without its quotes
+ * @description Escapes a string for use in a regular expression.
+ * @param {String} text The text
+ * @returns {String} The escaped text
  */
-function unquote(value) {
-    let v = (value || '').trim();
-    if (v.startsWith('"')) v = v.slice(1);
-    if (v.endsWith('"')) v = v.slice(0, -1);
-    return v;
-}
-
-/**
- * @description Picks the largest whole unit (days, hours or minutes) for a signed number of minutes.
- * @param {Number} minutes The minutes (negative is the past)
- * @returns {Object} { amount, unit } with the sign kept on the amount
- */
-function toAmount(minutes) {
-    const m = Math.abs(minutes);
-    const sign = minutes < 0 ? -1 : 1;
-    if (m && m % 1440 === 0) return { amount: (sign * m) / 1440, unit: 'days' };
-    if (m && m % 60 === 0) return { amount: (sign * m) / 60, unit: 'hours' };
-    return { amount: minutes, unit: 'minutes' };
+function escapeRegExp(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 let rowKey = 0;
+const nextKey = (prefix) => `${prefix}-${rowKey++}`;
 
 export default class JobSequenceParametersBuilder extends LightningElement {
+    @api handlerClass;
+
     mode = 'builder';
     rawText = '';
+    parseError;
     fieldRows = [];
     variableRows = [];
-    otherEntries = [];
+    handlerRows = [];
+    // Keys of the JSON the builder doesn't edit, kept as they are
+    otherKeys = {};
 
     _parameters = '';
-    _isFieldShift = false;
     _whereClause = '';
     _fieldOptions = [];
+    _isFieldShift = false;
     lastEmitted;
 
-    variableOptions = [
-        { label: 'DateTimeVar (relative date/time, used as :DateTimeVar)', value: VARIABLE_DATETIME },
-        { label: 'Swap-in text (used as {0})', value: VARIABLE_SWAP }
+    typeOptions = TYPE_OPTIONS;
+    booleanOptions = [
+        { label: 'true', value: 'true' },
+        { label: 'false', value: 'false' }
     ];
-    swapTextHelp = 'Replaces {0} in Query - Where, so usually starts with AND or OR.';
-    unitOptions = [
-        { label: 'minutes', value: 'minutes' },
-        { label: 'hours', value: 'hours' },
-        { label: 'days', value: 'days' }
+    booleanTestOptions = [
+        { label: '(same as Value)', value: '' },
+        { label: 'true', value: 'true' },
+        { label: 'false', value: 'false' }
     ];
 
     /**
-     * @description The Job Parameters text. External changes (e.g. loading a job) are read back into the builder.
+     * @description The Job Parameters JSON. External changes (e.g. loading a job) are read back into the builder.
      */
     @api
     get parameters() {
@@ -105,20 +117,6 @@ export default class JobSequenceParametersBuilder extends LightningElement {
         }
     }
 
-    /**
-     * @description Whether the job runs FieldShift. Only FieldShift reads field values, so other jobs keep
-     * field-named entries under Other parameters; the parameters are re-read when this changes.
-     */
-    @api
-    get isFieldShift() {
-        return this._isFieldShift;
-    }
-    set isFieldShift(value) {
-        const changed = Boolean(value) !== this._isFieldShift;
-        this._isFieldShift = Boolean(value);
-        if (changed && this.mode === 'builder') this.parse();
-    }
-
     @api
     get whereClause() {
         return this._whereClause;
@@ -127,97 +125,90 @@ export default class JobSequenceParametersBuilder extends LightningElement {
         this._whereClause = value || '';
     }
 
-    /**
-     * @description The object's fields; when they arrive, the parameters are re-read so field values are recognized.
-     */
     @api
     get fieldOptions() {
         return this._fieldOptions;
     }
     set fieldOptions(value) {
         this._fieldOptions = value || [];
-        if (this.mode === 'builder') this.parse();
     }
 
-    // ---------- Reading parameters into rows ----------
-
-    get fieldsByLowerName() {
-        const map = new Map();
-        this._fieldOptions.filter((f) => f.kind === 'field').forEach((f) => map.set(f.value.toLowerCase(), f));
-        return map;
+    @api
+    get isFieldShift() {
+        return this._isFieldShift;
     }
+    set isFieldShift(value) {
+        this._isFieldShift = Boolean(value);
+    }
+
+    // ---------- Reading and writing ----------
 
     /**
-     * @description Reads the parameters text into field rows, variable rows and anything else.
+     * @description Reads the JSON into rows. Text that isn't Job Parameters JSON opens in text mode with the error.
      */
     parse() {
-        const fields = this.fieldsByLowerName;
-        const fieldRows = [];
-        const variableRows = [];
-        const other = [];
-        splitParameters(this._parameters).forEach((entry) => {
-            const colon = entry.indexOf(':');
-            if (colon < 1) {
-                other.push(entry);
+        this.parseError = undefined;
+        this.rawText = this._parameters;
+        let data = {};
+        if (this._parameters.trim()) {
+            try {
+                data = JSON.parse(this._parameters);
+                if (data === null || typeof data !== 'object' || Array.isArray(data)) throw new Error('it is not a JSON object');
+            } catch (e) {
+                this.parseError = `Job Parameters must be JSON, e.g. {"variables": [...]}; ${e.message}. Fix it here, or clear it to start over.`;
+                this.mode = 'text';
                 return;
             }
-            const name = unquote(entry.slice(0, colon)).trim();
-            const value = unquote(entry.slice(colon + 1));
-            const key = name.toLowerCase();
-            if (key === TEST_KEY || key === NOT_TEST_KEY) {
-                const isTest = key === TEST_KEY;
-                const match = DATETIME_VAR.exec(value);
-                if (match) {
-                    const { amount, unit } = toAmount(Number(match[1]));
-                    variableRows.push({ key: `var-${rowKey++}`, variable: VARIABLE_DATETIME, isTest, amount, unit, text: '' });
-                } else {
-                    variableRows.push({ key: `var-${rowKey++}`, variable: VARIABLE_SWAP, isTest, amount: null, unit: 'days', text: value });
-                }
-            } else if (this._isFieldShift && fields.has(key)) {
-                const isBlank = value.toLowerCase() === 'null';
-                fieldRows.push({ key: `row-${rowKey++}`, field: fields.get(key).value, value: isBlank ? '' : value, isBlank });
-            } else {
-                other.push(entry);
-            }
-        });
-        this.fieldRows = fieldRows;
-        this.variableRows = variableRows;
-        this.otherEntries = other;
-        this.rawText = this._parameters;
+        }
+        // eslint-disable-next-line no-unused-vars
+        const { fieldValues, variables, handlerParameters, version, ...others } = data;
+        this.otherKeys = others;
+        this.fieldRows = (Array.isArray(fieldValues) ? fieldValues : []).map((fv) => ({
+            key: nextKey('field'),
+            field: fv?.field || '',
+            value: fv?.value ?? '',
+            isBlank: fv?.blank === true
+        }));
+        this.variableRows = (Array.isArray(variables) ? variables : []).map((v) => ({
+            key: nextKey('var'),
+            name: v?.name || '',
+            type: v?.type || 'Text',
+            value: v?.value ?? '',
+            testValue: v?.testValue ?? ''
+        }));
+        const params = handlerParameters && typeof handlerParameters === 'object' ? handlerParameters : {};
+        this.handlerRows = Object.entries(params).map(([name, value]) => ({ key: nextKey('param'), name, value: value ?? '' }));
     }
 
-    // ---------- Writing rows back to parameters ----------
-
     /**
-     * @description Builds the parameters text from the rows, in the format the engine reads.
-     * @returns {String} The Job Parameters text, one entry per line
+     * @description Builds the JSON from the rows; blank when nothing is set.
+     * @returns {String} The Job Parameters JSON
      */
     serialize() {
-        const entries = [];
-        if (this._isFieldShift) {
-            this.fieldRows
-                .filter((row) => row.field)
-                .forEach((row) => entries.push(`${row.field}:"${row.isBlank ? 'null' : row.value ?? ''}"`));
-        }
-        this.variableRows.forEach((row) => {
-            const prefix = row.isTest ? 'Test.isRunningTest' : '!Test.isRunningTest';
-            if (row.variable === VARIABLE_DATETIME) {
-                const minutes = this.minutesFor(row);
-                if (minutes !== null) entries.push(`${prefix}:"DateTimeVar=${minutes}"`);
-            } else if (row.variable === VARIABLE_SWAP && (row.text || '').trim()) {
-                entries.push(`${prefix}:"${row.text.trim()}"`);
-            }
+        const data = { version: 1, ...this.otherKeys };
+        const fieldValues = this.fieldRows
+            .filter((row) => row.field)
+            .map((row) => (row.isBlank ? { field: row.field, blank: true } : { field: row.field, value: row.value ?? '' }));
+        const variables = this.variableRows.map((row) => {
+            const variable = { name: row.name, type: row.type };
+            if (row.value !== '' && row.value !== null) variable.value = row.value;
+            if (row.testValue !== '' && row.testValue !== null) variable.testValue = row.testValue;
+            return variable;
         });
-        return [...entries, ...this.otherEntries].join(',\n');
-    }
-
-    minutesFor(row) {
-        if (row.amount === null || row.amount === '' || Number.isNaN(Number(row.amount))) return null;
-        return Math.round(Number(row.amount) * UNIT_MINUTES[row.unit]);
+        const handlerParameters = {};
+        this.handlerRows
+            .filter((row) => row.name)
+            .forEach((row) => {
+                handlerParameters[row.name] = row.value ?? '';
+            });
+        if (fieldValues.length) data.fieldValues = fieldValues;
+        if (variables.length) data.variables = variables;
+        if (Object.keys(handlerParameters).length) data.handlerParameters = handlerParameters;
+        return Object.keys(data).length > 1 ? JSON.stringify(data, null, 2) : '';
     }
 
     /**
-     * @description Sends the new parameters to the editor. The Where is passed through unchanged.
+     * @description Sends the parameters (and the Where, which a rename may have changed) to the editor.
      */
     emit() {
         const parameters = this.mode === 'text' ? this.rawText : this.serialize();
@@ -229,47 +220,29 @@ export default class JobSequenceParametersBuilder extends LightningElement {
     // ---------- Checks ----------
 
     /**
-     * @description Problems with the variable rows: two rows for the same context, mixed variable types, or a
-     * DateTimeVar row without an amount.
+     * @description Problems with the variable names, and variables Query - Where uses but doesn't define. The
+     * editor's Built query panel lists the full checks from the server.
      * @returns {String[]} The problems
      */
     get variableProblems() {
         const problems = [];
-        const scheduled = this.variableRows.filter((r) => !r.isTest);
-        const testing = this.variableRows.filter((r) => r.isTest);
-        if (scheduled.length > 1) problems.push('Only one variable row can be for scheduled runs (Test.isRunningTest() unchecked).');
-        if (testing.length > 1) problems.push('Only one variable row can be for when Test.isRunningTest() is true.');
-        const types = new Set(this.variableRows.map((r) => r.variable));
-        if (types.size > 1) problems.push('A job can use DateTimeVar or swap-in text {0}, not both.');
-        if (this.variableRows.some((r) => r.variable === VARIABLE_DATETIME && this.minutesFor(r) === null)) {
-            problems.push('Enter an amount for each DateTimeVar row.');
+        const seen = new Set();
+        this.variableRows.forEach((row) => {
+            if (!NAME_PATTERN.test(row.name)) {
+                problems.push(`Variable name "${row.name}" must start with a letter and use only letters, numbers and underscores.`);
+            } else if (seen.has(row.name.toLowerCase())) {
+                problems.push(`Two variables are named ${row.name}.`);
+            }
+            seen.add(row.name.toLowerCase());
+        });
+        for (const [, name] of this._whereClause.matchAll(/\{!\s*Var\.([A-Za-z0-9_]+)\s*\}/gi)) {
+            if (!seen.has(name.toLowerCase())) problems.push(`Query - Where uses {!Var.${name}}, but no variable named ${name} is defined.`);
         }
-        return problems;
+        return [...new Set(problems)];
     }
 
     get hasVariableProblems() {
         return this.variableProblems.length > 0;
-    }
-
-    /**
-     * @description Explains when the Where and the variable rows don't match.
-     * @returns {String} The warning, or undefined
-     */
-    get whereWarning() {
-        const where = this._whereClause || '';
-        const usesDateTime = /:\s*(g_)?DateTimeVar\b/i.test(where);
-        const usesSwap = where.includes('{0}');
-        const types = new Set(this.variableRows.map((r) => r.variable));
-        if (types.has(VARIABLE_DATETIME) && !usesDateTime) {
-            return 'DateTimeVar is defined, but Query - Where has no :DateTimeVar. Click in Query - Where and insert it from the field chooser.';
-        }
-        if (types.has(VARIABLE_SWAP) && !usesSwap) {
-            return 'Swap-in text is defined, but Query - Where has no {0}. Click in Query - Where and insert it from the field chooser.';
-        }
-        if (usesDateTime && !types.has(VARIABLE_DATETIME)) {
-            return 'Query - Where uses :DateTimeVar, but no DateTimeVar variable is defined. Add a variable row for it.';
-        }
-        return undefined;
     }
 
     // ---------- Display ----------
@@ -282,7 +255,6 @@ export default class JobSequenceParametersBuilder extends LightningElement {
         return this.isBuilderMode ? 'Edit as text' : 'Back to the builder';
     }
 
-    // The job's actual parameters; every builder change is written to them, so this is also what the builder produced
     get generatedText() {
         return this._parameters;
     }
@@ -291,12 +263,16 @@ export default class JobSequenceParametersBuilder extends LightningElement {
         return Boolean(this.generatedText);
     }
 
-    get hasOtherEntries() {
-        return this.otherEntries.length > 0;
+    get showFieldValues() {
+        return this._isFieldShift || this.fieldRows.length > 0;
     }
 
-    get otherText() {
-        return this.otherEntries.join(',\n');
+    get fieldValuesIgnored() {
+        return !this._isFieldShift && this.fieldRows.length > 0;
+    }
+
+    get showHandlerParameters() {
+        return Boolean(this.handlerClass && this.handlerClass !== DEFAULT_HANDLER) || this.handlerRows.length > 0;
     }
 
     get noFieldsYet() {
@@ -307,42 +283,69 @@ export default class JobSequenceParametersBuilder extends LightningElement {
         return this._fieldOptions.filter((f) => f.kind === 'field' && f.updateable);
     }
 
-    get displayVariableRows() {
-        return this.variableRows.map((row) => ({
-            ...row,
-            isDateTime: row.variable === VARIABLE_DATETIME,
-            isSwap: row.variable === VARIABLE_SWAP
-        }));
+    get fieldsByLowerName() {
+        const map = new Map();
+        this._fieldOptions.filter((f) => f.kind === 'field').forEach((f) => map.set(f.value.toLowerCase(), f));
+        return map;
     }
 
     /**
-     * @description The FieldShift rows with what each needs to render its value input.
+     * @description The field value rows with what each needs to render its value input.
      * @returns {Object[]} The display rows
      */
-    get displayRows() {
+    get displayFieldRows() {
         const fields = this.fieldsByLowerName;
         return this.fieldRows.map((row) => {
             const field = row.field ? fields.get(row.field.toLowerCase()) : undefined;
             const type = field?.fieldType || 'STRING';
+            // A token such as {!Today} can't go in a typed input, so it is shown as text
+            const typed = !String(row.value).includes('{!');
             const hasPicklistValues = (type === 'PICKLIST' || type === 'MULTIPICKLIST') && Boolean(field?.picklistValues?.length);
             return {
                 ...row,
                 fieldLabel: field ? `${field.label} (${field.value})` : row.field,
-                isCheckbox: type === 'BOOLEAN',
+                isCheckbox: typed && type === 'BOOLEAN',
                 checked: String(row.value).toLowerCase() === 'true',
-                isDate: type === 'DATE',
-                isDateTime: type === 'DATETIME',
-                isNumber: NUMBER_TYPES.includes(type),
-                // A picklist without active values falls back to a text input
-                isPicklist: hasPicklistValues,
+                isDate: typed && type === 'DATE',
+                isDateTime: typed && type === 'DATETIME',
+                isNumber: typed && NUMBER_FIELD_TYPES.includes(type),
+                isPicklist: typed && hasPicklistValues,
                 picklistOptions: (field?.picklistValues || []).map((v) => ({ label: v, value: v })),
-                valueDisabled: row.isBlank,
                 excludeFields: this.fieldRows.filter((r) => r.key !== row.key && r.field).map((r) => r.field)
             };
         });
     }
 
-    // ---------- Handlers ----------
+    /**
+     * @description The variable rows with the inputs their type needs, for the value and the test value.
+     * @returns {Object[]} The display rows
+     */
+    get displayVariableRows() {
+        return this.variableRows.map((row) => {
+            const isRelativeDate = row.type === 'RelativeDate';
+            const relativeValue = readRelative(row.value, DEFAULT_UNIT);
+            const relativeTest = readRelative(row.testValue, relativeValue.unit);
+            return {
+                ...row,
+                token: NAME_PATTERN.test(row.name) ? `{!Var.${row.name}}` : '',
+                typeHelp: TYPE_HELP[row.type],
+                isRelative: isRelativeDate || row.type === 'RelativeDateTime',
+                isBoolean: row.type === 'Boolean',
+                isNumber: row.type === 'Number',
+                isDate: row.type === 'Date',
+                isDateTime: row.type === 'DateTime',
+                isText: ['Text', 'TextList', 'SoqlFragment'].includes(row.type) || !TYPE_HELP[row.type],
+                textPlaceholder: row.type === 'TextList' ? 'A, B' : row.type === 'SoqlFragment' ? 'AND IsActive = true' : '',
+                units: (isRelativeDate ? DATE_UNITS : DATETIME_UNITS).map((u) => ({ label: u, value: u })),
+                valueAmount: relativeValue.amount,
+                valueUnit: relativeValue.unit,
+                testAmount: relativeTest.amount,
+                testUnit: relativeTest.unit
+            };
+        });
+    }
+
+    // ---------- Handlers: mode ----------
 
     handleToggleMode() {
         if (this.isBuilderMode) {
@@ -352,53 +355,53 @@ export default class JobSequenceParametersBuilder extends LightningElement {
             this._parameters = this.rawText;
             this.mode = 'builder';
             this.parse();
-            this.emit();
+            if (this.isBuilderMode) this.emit();
         }
     }
 
     handleRawChange(event) {
         this.rawText = event.detail.value;
+        this.parseError = undefined;
         this.emit();
     }
 
-    // Field rows
-    handleAddRow() {
-        this.fieldRows = [...this.fieldRows, { key: `row-${rowKey++}`, field: '', value: '', isBlank: false }];
+    // ---------- Handlers: field values ----------
+
+    handleAddField() {
+        this.fieldRows = [...this.fieldRows, { key: nextKey('field'), field: '', value: '', isBlank: false }];
     }
 
-    updateRow(key, changes) {
+    updateField(key, changes) {
         this.fieldRows = this.fieldRows.map((row) => (row.key === key ? { ...row, ...changes } : row));
         this.emit();
     }
 
-    handleRowField(event) {
-        this.updateRow(event.target.dataset.key, { field: event.detail.value, value: '' });
+    handleFieldName(event) {
+        this.updateField(event.target.dataset.key, { field: event.detail.value, value: '' });
     }
 
-    handleRowValue(event) {
-        const key = event.target.dataset.key;
+    handleFieldValue(event) {
         const value = event.target.type === 'checkbox' ? String(event.target.checked) : event.detail.value ?? event.target.value;
-        this.updateRow(key, { value });
+        this.updateField(event.target.dataset.key, { value });
     }
 
-    handleRowBlank(event) {
-        this.updateRow(event.target.dataset.key, { isBlank: event.target.checked });
+    handleFieldBlank(event) {
+        this.updateField(event.target.dataset.key, { isBlank: event.target.checked });
     }
 
-    handleRemoveRow(event) {
+    handleRemoveField(event) {
         this.fieldRows = this.fieldRows.filter((row) => row.key !== event.currentTarget.dataset.key);
         this.emit();
     }
 
-    // Variable rows
+    // ---------- Handlers: variables ----------
+
     handleAddVariable() {
-        // Suggest the context and variable that aren't used yet
-        const hasScheduled = this.variableRows.some((r) => !r.isTest);
-        const variable = this.variableRows[0]?.variable || VARIABLE_DATETIME;
-        this.variableRows = [
-            ...this.variableRows,
-            { key: `var-${rowKey++}`, variable, isTest: hasScheduled, amount: null, unit: 'days', text: '' }
-        ];
+        const names = new Set(this.variableRows.map((r) => r.name.toLowerCase()));
+        let n = this.variableRows.length + 1;
+        while (names.has(`var${n}`)) n++;
+        this.variableRows = [...this.variableRows, { key: nextKey('var'), name: `var${n}`, type: 'RelativeDateTime', value: '', testValue: '' }];
+        this.emit();
     }
 
     updateVariable(key, changes) {
@@ -406,25 +409,43 @@ export default class JobSequenceParametersBuilder extends LightningElement {
         this.emit();
     }
 
+    /**
+     * @description Renames a variable, and its {!Var.name} tokens in Query - Where.
+     * @param {Event} event The name input's change event
+     */
     handleVariableName(event) {
-        this.updateVariable(event.target.dataset.key, { variable: event.detail.value });
+        const key = event.target.dataset.key;
+        const newName = (event.detail.value || '').trim();
+        const oldName = this.variableRows.find((r) => r.key === key)?.name;
+        if (oldName && NAME_PATTERN.test(oldName) && NAME_PATTERN.test(newName) && oldName !== newName) {
+            const token = new RegExp(`\\{!\\s*Var\\.${escapeRegExp(oldName)}\\s*\\}`, 'gi');
+            this._whereClause = this._whereClause.replace(token, `{!Var.${newName}}`);
+        }
+        this.updateVariable(key, { name: newName });
     }
 
-    handleVariableTest(event) {
-        this.updateVariable(event.target.dataset.key, { isTest: event.target.checked });
+    handleVariableType(event) {
+        // Values rarely fit a new type, so they are cleared
+        this.updateVariable(event.target.dataset.key, { type: event.detail.value, value: '', testValue: '' });
     }
 
-    handleVariableAmount(event) {
-        const value = event.detail.value;
-        this.updateVariable(event.target.dataset.key, { amount: value === '' || value === null ? null : Number(value) });
-    }
-
-    handleVariableUnit(event) {
-        this.updateVariable(event.target.dataset.key, { unit: event.detail.value });
-    }
-
-    handleVariableText(event) {
-        this.updateVariable(event.target.dataset.key, { text: event.detail.value });
+    /**
+     * @description Sets a variable's value or test value (data-part), including the amount or unit (data-sub) of a
+     * relative one, which is stored as e.g. "-90 days".
+     * @param {Event} event The input's change event
+     */
+    handleVariableValue(event) {
+        const { key, part, sub } = event.target.dataset;
+        const row = this.variableRows.find((r) => r.key === key);
+        let value = event.detail.value ?? '';
+        if (sub) {
+            const fallbackUnit = part === 'testValue' ? readRelative(row.value, DEFAULT_UNIT).unit : DEFAULT_UNIT;
+            const current = readRelative(row[part], fallbackUnit);
+            const amount = sub === 'amount' ? value : current.amount;
+            const unit = sub === 'unit' ? value : current.unit;
+            value = amount === '' || amount === null || amount === undefined ? '' : `${Number(amount)} ${unit}`;
+        }
+        this.updateVariable(key, { [part]: value });
     }
 
     handleRemoveVariable(event) {
@@ -432,8 +453,20 @@ export default class JobSequenceParametersBuilder extends LightningElement {
         this.emit();
     }
 
-    handleOtherChange(event) {
-        this.otherEntries = splitParameters(event.detail.value);
+    // ---------- Handlers: handler parameters ----------
+
+    handleAddHandlerParameter() {
+        this.handlerRows = [...this.handlerRows, { key: nextKey('param'), name: '', value: '' }];
+    }
+
+    handleHandlerParameter(event) {
+        const { key, part } = event.target.dataset;
+        this.handlerRows = this.handlerRows.map((row) => (row.key === key ? { ...row, [part]: event.detail.value } : row));
+        this.emit();
+    }
+
+    handleRemoveHandlerParameter(event) {
+        this.handlerRows = this.handlerRows.filter((row) => row.key !== event.currentTarget.dataset.key);
         this.emit();
     }
 }

@@ -1,4 +1,16 @@
 /**
+ * Copyright 2026 Gary Butler
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+/**
  * @description: **JobSequenceManagerControllerTest** -- Unit tests for JobSequenceManagerController and
  * JobSequenceDeployCallback: listing, validation, saving, activation, reordering, Test Query and deploy results.
  * @author: Gary Butler
@@ -9,6 +21,8 @@
  *   | ----------- | ----------------- | ------------------------------------------------------- |
  *   |  10/16/2026 |  Gary Butler      | Initial Creation                                        |
  *   |  10/17/2026 |  Gary Butler      | Tests for handler options and picklist values           |
+ *   |  10/17/2026 |  Gary Butler      | Tests for typed-variable parameters and FieldShift      |
+ *   |  10/17/2026 |  Gary Butler      | Run standalone refuses non-One Time jobs                |
  *
  */
 @IsTest
@@ -342,107 +356,152 @@ private class JobSequenceManagerControllerTest {
     }
 
     /**
-     * @description Verifies Test Query explains when DateTimeVar or test parameters have nothing to fill in the Where.
+     * @description Builds Job Parameters JSON with one variable.
+     *
+     * @param name      The variable name
+     * @param type      The variable type
+     * @param value     The value for scheduled runs
+     * @param testValue The value when Test.isRunningTest() is true
+     *
+     * @return The JSON
      */
-    @IsTest
-    static void testQueryHintsAtUnusedParameters() {
-        JobSequenceManagerController.SequenceJob timeJob = validJob();
-        timeJob.parameters = '!Test.isRunningTest:"DateTimeVar=-1440",Test.isRunningTest:"DateTimeVar=-1"';
-        JobSequenceManagerController.SequenceJob swapJob = validJob();
-        swapJob.parameters = '!Test.isRunningTest:"AND LastModifiedDate != TODAY"';
-        JobSequenceManagerController.SequenceJob fineJob = validJob();
-        fineJob.parameters = timeJob.parameters;
-        fineJob.whereClause = 'IsActive = true AND LastModifiedDate >= :DateTimeVar';
-
-        Test.startTest();
-        JobSequenceManagerController.TestQueryResult timeResult = JobSequenceManagerController.testQuery(JSON.serialize(timeJob), false);
-        JobSequenceManagerController.TestQueryResult swapResult = JobSequenceManagerController.testQuery(JSON.serialize(swapJob), false);
-        JobSequenceManagerController.TestQueryResult fineResult = JobSequenceManagerController.testQuery(JSON.serialize(fineJob), false);
-        Test.stopTest();
-
-        Assert.isTrue(timeResult.queryHint.contains(':DateTimeVar'), 'A missing :DateTimeVar should be pointed out');
-        Assert.isTrue(swapResult.queryHint.contains('{0}'), 'A missing {0} should be pointed out');
-        Assert.isTrue(fineResult.isValid, 'The time filter query should run: ' + fineResult.errorMessage);
-        Assert.isNull(fineResult.queryHint, 'No hint when the Where uses :DateTimeVar');
-        Assert.isTrue(fineResult.query.contains('LastModifiedDate >= 20'), 'The date/time should be filled in: ' + fineResult.query);
-
-        JobSequenceManagerController.SequenceJob unsetJob = validJob();
-        unsetJob.whereClause = 'IsActive = true AND LastModifiedDate >= :g_DateTimeVar';
-        Assert.isTrue(JobSequenceManagerController.getUnusedParameterHint(unsetJob).contains('Variable does not exist'),
-                'A :DateTimeVar the parameters never set should be pointed out');
-
-        // Jason's pattern: only the unit-test value. Fine for a Test Only job, refused for a scheduled one
-        JobSequenceManagerController.SequenceJob testOnlyValue = validJob();
-        testOnlyValue.whereClause = 'IsActive = true AND LastModifiedDate >= :g_DateTimeVar';
-        testOnlyValue.parameters = 'Test.isRunningTest:DateTimeVar=-1';
-        Assert.isTrue(JobSequenceManagerController.getParameterIssue(testOnlyValue).blocksSave, 'A Daily job needs a normal-run value');
-        testOnlyValue.frequency = 'Test Only';
-        Assert.isFalse(JobSequenceManagerController.getParameterIssue(testOnlyValue).blocksSave, 'A Test Only job only runs in tests');
-
-        // Only the normal-run value: warned about, but it can be saved
-        JobSequenceManagerController.SequenceJob normalOnly = validJob();
-        normalOnly.whereClause = 'IsActive = true AND LastModifiedDate >= :DateTimeVar';
-        normalOnly.parameters = '!Test.isRunningTest:"DateTimeVar=-60"';
-        JobSequenceManagerController.ParameterIssue normalOnlyIssue = JobSequenceManagerController.getParameterIssue(normalOnly);
-        Assert.isTrue(normalOnlyIssue.message.contains('Test.isRunningTest() is true'), 'A missing test value should be pointed out');
-        Assert.isFalse(normalOnlyIssue.blocksSave, 'A missing unit-test value should not block the save');
-
-        JobSequenceManagerController.recordsOverride = new List<Sequence_Job__mdt>();
-        Assert.isTrue(String.join(JobSequenceManagerController.validate(swapJob, true), ' ').contains('{0}'),
-                'Saving test conditions without {0} should be refused');
-        Assert.isFalse(String.join(JobSequenceManagerController.validate(fineJob, true), ' ').contains('DateTimeVar'),
-                'A time filter the Where uses should save');
+    private static String variableParameters(String name, String type, String value, String testValue) {
+        return JSON.serialize(new Map<String, Object>{
+            'version' => 1,
+            'variables' => new List<Object>{
+                new Map<String, Object>{'name' => name, 'type' => type, 'value' => value, 'testValue' => testValue}
+            }
+        });
     }
 
     /**
-     * @description Verifies Test Query can build Jason's Test Only pattern (unit-test value only) as a unit test would,
-     * and explains why the normal-run version fails.
+     * @description Verifies Test Query resolves {!Var.x} for scheduled runs and for Test.isRunningTest(), and shows
+     * the query as written as well.
      */
     @IsTest
-    static void testQueryAsUnitTest() {
+    static void testQueryResolvesVariables() {
         JobSequenceManagerController.SequenceJob job = validJob();
-        job.frequency = 'Test Only';
-        job.whereClause = 'IsActive = true AND LastModifiedDate >= :g_DateTimeVar';
-        job.parameters = 'Test.isRunningTest:DateTimeVar=-1';
+        job.whereClause = 'IsActive = true AND LastModifiedDate >= {!Var.since}';
+        job.parameters = variableParameters('since', 'RelativeDateTime', '-1 days', '-1 minutes');
 
         Test.startTest();
+        JobSequenceManagerController.TestQueryResult scheduled = JobSequenceManagerController.testQuery(JSON.serialize(job), false);
         JobSequenceManagerController.TestQueryResult asTest = JobSequenceManagerController.testQuery(JSON.serialize(job), true);
-        JobSequenceManagerController.TestQueryResult asNormal = JobSequenceManagerController.testQuery(JSON.serialize(job), false);
         Test.stopTest();
 
-        Assert.isTrue(asTest.isValid, 'As a unit test the query should be valid: ' + asTest.errorMessage);
-        Assert.isTrue(asTest.query.contains('LastModifiedDate >= 20'), 'The unit-test value should be filled in: ' + asTest.query);
-        Assert.isTrue(asTest.queryWithVariables.contains(':g_DateTimeVar'), 'The query as written should keep the variable');
-        Assert.isTrue(asNormal.isValid, 'As a normal run the unit-test value is borrowed so the query can be checked: ' + asNormal.errorMessage);
-        Assert.isTrue(asNormal.queryWithVariables.contains(':g_DateTimeVar'), 'Both versions should be shown');
-        Assert.isTrue(asNormal.queryNote.contains('scheduled runs'), 'The borrowed value should be explained: ' + asNormal.queryNote);
+        Assert.isTrue(scheduled.isValid, 'The query should run: ' + scheduled.errorMessage);
+        Assert.isTrue(scheduled.query.contains('LastModifiedDate >= 20'), 'The date/time should be filled in: ' + scheduled.query);
+        Assert.isTrue(scheduled.queryWithVariables.contains('{!Var.since}'), 'The query as written should keep the token');
+        Assert.isNull(scheduled.queryHint, 'A defined, used variable needs no hint: ' + scheduled.queryHint);
+        Assert.isTrue(asTest.isValid, 'The test version should run: ' + asTest.errorMessage);
+        Assert.areNotEqual(scheduled.query, asTest.query, 'Scheduled runs and tests use different values');
     }
 
     /**
-     * @description Verifies the built query is returned as written and filled in, for normal runs and unit tests.
+     * @description Verifies the parameter checks: undefined and unused variables, a Test Only job with only a test
+     * value, and parameters that are not JSON.
+     */
+    @IsTest
+    static void parameterChecks() {
+        JobSequenceManagerController.recordsOverride = new List<Sequence_Job__mdt>();
+        JobSequenceManagerController.SequenceJob undefinedJob = validJob();
+        undefinedJob.whereClause = 'IsActive = true AND LastModifiedDate >= {!Var.since}';
+
+        JobSequenceManagerController.SequenceJob unusedJob = validJob();
+        unusedJob.parameters = variableParameters('since', 'RelativeDateTime', '-1 days', null);
+
+        JobSequenceManagerController.SequenceJob testOnlyValue = validJob();
+        testOnlyValue.whereClause = 'IsActive = true AND LastModifiedDate >= {!Var.since}';
+        testOnlyValue.parameters = variableParameters('since', 'RelativeDateTime', null, '-1 minutes');
+
+        JobSequenceManagerController.SequenceJob notJson = validJob();
+        notJson.parameters = 'StageName:Closed Lost';
+        JobSequenceManagerController.SequenceJob badJson = validJob();
+        badJson.parameters = '{"variables": [';
+
+        Test.startTest();
+        String undefinedProblems = String.join(JobSequenceManagerController.validate(undefinedJob, true), ' ');
+        String unusedProblems = String.join(JobSequenceManagerController.validate(unusedJob, true), ' ');
+        String unusedHint = JobSequenceManagerController.getParameterHint(unusedJob);
+        String dailyProblems = String.join(JobSequenceManagerController.validate(testOnlyValue, true), ' ');
+        testOnlyValue.frequency = 'Test Only';
+        String testOnlyProblems = String.join(JobSequenceManagerController.validate(testOnlyValue, true), ' ');
+        String notJsonProblems = String.join(JobSequenceManagerController.validate(notJson, true), ' ');
+        String badJsonProblems = String.join(JobSequenceManagerController.validate(badJson, true), ' ');
+        Test.stopTest();
+
+        Assert.isTrue(undefinedProblems.contains('no variable named since'), 'An undefined variable should be refused: ' + undefinedProblems);
+        Assert.isFalse(unusedProblems.contains('since'), 'An unused variable should not block the save: ' + unusedProblems);
+        Assert.isTrue(unusedHint.contains('never used'), 'An unused variable should be pointed out: ' + unusedHint);
+        Assert.isTrue(dailyProblems.contains('no value for scheduled runs'), 'A Daily job needs a scheduled value: ' + dailyProblems);
+        Assert.isFalse(testOnlyProblems.contains('since'), 'A Test Only job only needs the test value: ' + testOnlyProblems);
+        Assert.isTrue(notJsonProblems.contains('must be JSON'), 'Old-style parameters should be refused: ' + notJsonProblems);
+        Assert.isTrue(badJsonProblems.contains('not valid JSON'), 'Broken JSON should be refused: ' + badJsonProblems);
+    }
+
+    /**
+     * @description Verifies FieldShift's field values must name distinct updateable fields, and that other jobs are
+     * warned their field values are ignored.
+     */
+    @IsTest
+    static void fieldValueChecks() {
+        JobSequenceManagerController.SequenceJob job = validJob();
+        job.jobType = 'Function';
+        job.executionJob = 'FieldShift';
+        job.parameters = JSON.serialize(new Map<String, Object>{
+            'fieldValues' => new List<Object>{
+                new Map<String, Object>{'field' => 'AboutMe', 'value' => 'Updated'},
+                new Map<String, Object>{'field' => 'aboutme', 'value' => 'Again'},
+                new Map<String, Object>{'field' => 'NoSuchField__c', 'value' => 'x'}
+            }
+        });
+        JobSequenceManagerController.SequenceJob empty = validJob();
+        empty.jobType = 'Function';
+        empty.executionJob = 'FieldShift';
+        JobSequenceManagerController.SequenceJob dmlJob = validJob();
+        dmlJob.parameters = job.parameters;
+
+        Test.startTest();
+        JobSequenceVariables.Issues fieldShift = JobSequenceManagerController.checkParameters(job);
+        JobSequenceVariables.Issues none = JobSequenceManagerController.checkParameters(empty);
+        JobSequenceVariables.Issues dml = JobSequenceManagerController.checkParameters(dmlJob);
+        Test.stopTest();
+
+        String problems = String.join(fieldShift.problems, ' ');
+        Assert.isTrue(problems.contains('set twice'), 'A field set twice should be refused: ' + problems);
+        Assert.isTrue(problems.contains('NoSuchField__c is not an updateable field'), 'An unknown field should be refused: ' + problems);
+        Assert.isFalse(problems.contains('AboutMe is not'), 'AboutMe is updateable: ' + problems);
+        Assert.isTrue(String.join(none.problems, ' ').contains('at least one field value'), 'FieldShift needs a field value');
+        Assert.isTrue(String.join(dml.warnings, ' ').contains('only used by the FieldShift'), 'A DML job should be warned');
+    }
+
+    /**
+     * @description Verifies the built query is returned as written and resolved, with the parameter problems and
+     * warnings, and that a token that cannot be resolved is reported.
      */
     @IsTest
     static void buildQueryShowsBothVersions() {
         JobSequenceManagerController.SequenceJob job = validJob();
-        job.whereClause = 'IsActive = true AND LastModifiedDate >= :DateTimeVar';
-        job.parameters = '!Test.isRunningTest:"DateTimeVar=-1440",Test.isRunningTest:"DateTimeVar=-1"';
+        job.whereClause = 'IsActive = true AND Alias IN {!Var.aliases} AND LastModifiedDate <= {!Now}';
+        job.parameters = variableParameters('aliases', 'TextList', 'a, b', 'c');
         JobSequenceManagerController.SequenceJob plain = validJob();
         JobSequenceManagerController.SequenceJob bad = validJob();
-        bad.parameters = 'NoColonHere';
+        bad.whereClause = 'IsActive = true {!Nope}';
 
         Test.startTest();
-        JobSequenceManagerController.BuiltQuery normal = JobSequenceManagerController.buildQuery(JSON.serialize(job), false);
+        JobSequenceManagerController.BuiltQuery scheduled = JobSequenceManagerController.buildQuery(JSON.serialize(job), false);
         JobSequenceManagerController.BuiltQuery asTest = JobSequenceManagerController.buildQuery(JSON.serialize(job), true);
         JobSequenceManagerController.BuiltQuery noVariables = JobSequenceManagerController.buildQuery(JSON.serialize(plain), false);
         JobSequenceManagerController.BuiltQuery broken = JobSequenceManagerController.buildQuery(JSON.serialize(bad), false);
         Test.stopTest();
 
-        Assert.isTrue(normal.queryWithVariables.contains(':DateTimeVar'), 'The written query should keep the variable');
-        Assert.isFalse(normal.query.contains(':DateTimeVar'), 'The running query should have it filled in');
-        Assert.areNotEqual(normal.query, asTest.query, 'Normal runs and unit tests use different values');
-        Assert.isNull(noVariables.queryWithVariables, 'Without variables only one version is needed');
-        Assert.isNull(normal.note, 'Both values are set, so nothing is borrowed');
-        Assert.isTrue(broken.errorMessage.contains('NoColonHere'), 'A build error should be reported');
+        Assert.isTrue(scheduled.queryWithVariables.contains('{!Var.aliases}'), 'The written query should keep the token');
+        Assert.isTrue(scheduled.query.contains('Alias IN (\'a\',\'b\')'), 'The list should be quoted: ' + scheduled.query);
+        Assert.isTrue(asTest.query.contains('Alias IN (\'c\')'), 'The test value should be used: ' + asTest.query);
+        Assert.isTrue(scheduled.problems.isEmpty(), 'No problems expected: ' + scheduled.problems);
+        Assert.isNull(noVariables.queryWithVariables, 'Without tokens only one version is needed');
+        Assert.isTrue(String.join(broken.problems, ' ').contains('Unknown token'), 'A bad token should be a save problem: ' + broken.problems);
+        Assert.isNull(broken.errorMessage, 'The problem is not repeated as the build error');
     }
 
     /**
@@ -467,5 +526,22 @@ private class JobSequenceManagerControllerTest {
         Assert.areEqual('Failed', event.Status__c, 'The status should be reported');
         Assert.isTrue(event.Message__c.contains('invalid job execution'), 'The failure should be in the message');
         Assert.areEqual('0Af000000000001AAA', event.DeploymentId__c, 'The deployment Id should be reported');
+    }
+
+    /**
+     * @description Verifies only One Time jobs can be run standalone.
+     */
+    @IsTest
+    static void runStandaloneRefusesOtherFrequencies() {
+        String message;
+        Test.startTest();
+        try {
+            JobSequenceManagerController.runStandalone('JOBSEQ_PURGE_RUNS');
+        } catch (AuraHandledException e) {
+            message = e.getMessage();
+        }
+        Test.stopTest();
+
+        Assert.isTrue(message.contains('only One Time jobs'), 'A Daily job should be refused: ' + message);
     }
 }

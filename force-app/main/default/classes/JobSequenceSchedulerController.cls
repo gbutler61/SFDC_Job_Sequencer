@@ -1,4 +1,16 @@
 /**
+ * Copyright 2026 Gary Butler
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+/**
  * @description: **JobSequenceSchedulerController** -- Apex controller for the jobSequenceScheduler LWC. Reports the
  * scheduled state of each frequency (every 5 minutes through yearly) and schedules, unschedules or immediately runs
  * them. Sub-hourly frequencies use one scheduled job per slot in the hour, because a Salesforce cron expression can
@@ -11,6 +23,8 @@
  *   | ----------- | ----------------- | ------------------------------------------------------- |
  *   |  10/16/2026 |  Gary Butler      | Initial Creation                                        |
  *   |  10/16/2026 |  Gary Butler      | Sub-hourly frequencies; single JobSequenceScheduledRun  |
+ *   |  10/17/2026 |  Gary Butler      | One Time row: Run Now for on-demand frequencies         |
+ *   |  10/17/2026 |  Gary Butler      | Remove original per-frequency class schedule support    |
  *
  */
 public with sharing class JobSequenceSchedulerController {
@@ -18,12 +32,12 @@ public with sharing class JobSequenceSchedulerController {
             'Every 5 Minutes', 'Every 10 Minutes', 'Every 15 Minutes', 'Every 30 Minutes',
             'Hourly', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'
     };
+    //Frequencies that are never scheduled, only run with Run Now
+    @TestVisible private static final List<String> ON_DEMAND_FREQUENCIES = new List<String>{'One Time'};
     //Minutes between runs for the sub-hourly frequencies
     @TestVisible private static final Map<String, Integer> MINUTE_INTERVALS = new Map<String, Integer>{
             'Every 5 Minutes' => 5, 'Every 10 Minutes' => 10, 'Every 15 Minutes' => 15, 'Every 30 Minutes' => 30
     };
-    //Frequencies that the original package scheduled with one class each (JobSequenceHourly, ...)
-    private static final Set<String> LEGACY_FREQUENCIES = new Set<String>{'Hourly', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'};
     @TestVisible private static final String JOB_NAME_PREFIX = 'Job Sequencer: ';
     @TestVisible private static final Integer ERROR_LOOKBACK_DAYS = 7;
 
@@ -46,7 +60,6 @@ public with sharing class JobSequenceSchedulerController {
         @AuraEnabled public String frequency;
         @AuraEnabled public Boolean isScheduled;
         @AuraEnabled public Boolean isFullyScheduled;
-        @AuraEnabled public Boolean isLegacy;
         @AuraEnabled public Boolean isHealthy;
         @AuraEnabled public Integer scheduleCount;
         @AuraEnabled public Integer expectedScheduleCount;
@@ -56,6 +69,8 @@ public with sharing class JobSequenceSchedulerController {
         @AuraEnabled public Datetime previousFireTime;
         @AuraEnabled public Integer activeJobCount;
         @AuraEnabled public Integer recentErrorCount;
+        //True for a frequency that is only run with Run Now, never scheduled
+        @AuraEnabled public Boolean isOnDemand = false;
     }
 
     /**
@@ -102,10 +117,8 @@ public with sharing class JobSequenceSchedulerController {
             status.scheduleCount = triggers.size();
             status.expectedScheduleCount = getSlots(frequency).size();
             status.isScheduled = !triggers.isEmpty();
-            status.isLegacy = false;
             status.isHealthy = true;
             for (CronTrigger ct : triggers) {
-                status.isLegacy = status.isLegacy || !ct.CronJobDetail.Name.startsWith(JOB_NAME_PREFIX);
                 if (!healthyStates.contains(ct.State)) {
                     status.isHealthy = false;
                     status.state = ct.State;
@@ -117,8 +130,21 @@ public with sharing class JobSequenceSchedulerController {
                     status.previousFireTime = ct.PreviousFireTime;
                 }
             }
-            status.isFullyScheduled = status.isLegacy ? status.isScheduled : status.scheduleCount >= status.expectedScheduleCount;
+            status.isFullyScheduled = status.scheduleCount >= status.expectedScheduleCount;
             status.cronExpression = triggers.size() == 1 ? triggers[0].CronExpression : null;
+            status.activeJobCount = activeJobCounts.containsKey(frequency) ? activeJobCounts.get(frequency) : 0;
+            status.recentErrorCount = recentErrorCounts.containsKey(frequency) ? recentErrorCounts.get(frequency) : 0;
+            data.frequencies.add(status);
+        }
+        for (String frequency : ON_DEMAND_FREQUENCIES) {
+            FrequencyStatus status = new FrequencyStatus();
+            status.frequency = frequency;
+            status.isOnDemand = true;
+            status.isScheduled = false;
+            status.isFullyScheduled = true;
+            status.isHealthy = true;
+            status.scheduleCount = 0;
+            status.expectedScheduleCount = 0;
             status.activeJobCount = activeJobCounts.containsKey(frequency) ? activeJobCounts.get(frequency) : 0;
             status.recentErrorCount = recentErrorCounts.containsKey(frequency) ? recentErrorCounts.get(frequency) : 0;
             data.frequencies.add(status);
@@ -128,8 +154,7 @@ public with sharing class JobSequenceSchedulerController {
     }
 
     /**
-     * @description Schedules every missing slot of a frequency with the single JobSequenceScheduledRun class. A
-     * frequency still scheduled with its original per-frequency class counts as scheduled.
+     * @description Schedules every missing slot of a frequency with the single JobSequenceScheduledRun class.
      *
      * @param frequency The frequency to schedule
      *
@@ -145,7 +170,7 @@ public with sharing class JobSequenceSchedulerController {
         for (CronTrigger ct : existing == null ? new List<CronTrigger>() : existing) {
             existingNames.add(ct.CronJobDetail.Name);
         }
-        if (existing != null && (existingNames.contains('JobSequence' + frequency) || existingNames.size() >= getSlots(frequency).size())) {
+        if (existing != null && existingNames.size() >= getSlots(frequency).size()) {
             throw newAuraException('The ' + frequency + ' run is already scheduled.');
         }
 
@@ -185,8 +210,7 @@ public with sharing class JobSequenceSchedulerController {
     }
 
     /**
-     * @description Removes every scheduled job of a frequency, including one made with the original per-frequency
-     * class. Runs already in progress are not interrupted.
+     * @description Removes every scheduled job of a frequency. Runs already in progress are not interrupted.
      *
      * @param frequency The frequency to unschedule
      *
@@ -218,7 +242,7 @@ public with sharing class JobSequenceSchedulerController {
      */
     @AuraEnabled
     public static Id runNow(String frequency) {
-        validateFrequency(frequency);
+        if (!ON_DEMAND_FREQUENCIES.contains(frequency)) validateFrequency(frequency);
         if (!isSequencerEnabled()) {
             throw newAuraException('The job sequencer is turned off. Turn it on in Job Sequencer Settings first.');
         }
@@ -269,30 +293,21 @@ public with sharing class JobSequenceSchedulerController {
     }
 
     /**
-     * @description Finds the scheduled jobs for every frequency: those this package names "Job Sequencer: ..." and
-     * those scheduled under the original class names (e.g. JobSequenceHourly).
+     * @description Finds the scheduled jobs for every frequency, which this package names "Job Sequencer: ...".
      *
      * @return The scheduled jobs keyed by frequency
      */
     private static Map<String, List<CronTrigger>> getCronTriggersByFrequency() {
-        Map<String, String> frequencyByLegacyName = new Map<String, String>();
-        for (String frequency : LEGACY_FREQUENCIES) {
-            frequencyByLegacyName.put('JobSequence' + frequency, frequency);
-        }
-        Set<String> legacyNames = frequencyByLegacyName.keySet();
         String namePattern = JOB_NAME_PREFIX + '%';
 
         Map<String, List<CronTrigger>> triggersByFrequency = new Map<String, List<CronTrigger>>();
         for (CronTrigger ct : [
                 SELECT Id, State, CronExpression, NextFireTime, PreviousFireTime, CronJobDetail.Name
                 FROM CronTrigger
-                WHERE CronJobDetail.Name LIKE :namePattern OR CronJobDetail.Name IN :legacyNames
+                WHERE CronJobDetail.Name LIKE :namePattern
                 WITH SYSTEM_MODE
         ]) {
-            String name = ct.CronJobDetail.Name;
-            String frequency = frequencyByLegacyName.containsKey(name)
-                    ? frequencyByLegacyName.get(name)
-                    : name.removeStart(JOB_NAME_PREFIX).substringBefore(' (:');
+            String frequency = ct.CronJobDetail.Name.removeStart(JOB_NAME_PREFIX).substringBefore(' (:');
             if (!FREQUENCIES.contains(frequency)) continue;
             if (!triggersByFrequency.containsKey(frequency)) {
                 triggersByFrequency.put(frequency, new List<CronTrigger>());

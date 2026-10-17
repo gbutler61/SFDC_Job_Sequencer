@@ -1,4 +1,16 @@
 /**
+ * Copyright 2026 Gary Butler
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+/**
  * @description jobSequenceManager -- The Sequence Jobs tab: lists Sequence Job records by frequency and run order,
  * and creates, clones, edits, activates, deactivates and reorders them without going into Setup.
  * @author Gary Butler
@@ -14,8 +26,11 @@ import getSequenceJobs from '@salesforce/apex/JobSequenceManagerController.getSe
 import getFieldOptions from '@salesforce/apex/JobSequenceManagerController.getFieldOptions';
 import setActive from '@salesforce/apex/JobSequenceManagerController.setActive';
 import moveJob from '@salesforce/apex/JobSequenceManagerController.moveJob';
+import runStandalone from '@salesforce/apex/JobSequenceManagerController.runStandalone';
 
 const ALL_FREQUENCIES = '__all__';
+// Only One Time jobs can be run on their own
+const STANDALONE_FREQUENCY = 'One Time';
 
 const COLUMNS = [
     { label: 'Frequency', fieldName: 'frequency', initialWidth: 150 },
@@ -106,6 +121,14 @@ export default class JobSequenceManager extends NavigationMixin(LightningElement
                 { label: 'Move down', name: 'down', iconName: 'utility:arrowdown', disabled: position >= siblings.length - 1 },
                 { label: 'Open in Setup', name: 'setup', iconName: 'utility:new_window' }
             ];
+            if (job.frequency === STANDALONE_FREQUENCY) {
+                rowActions.unshift({
+                    label: job.active ? 'Run standalone' : 'Run standalone (activate it first)',
+                    name: 'standalone',
+                    iconName: 'utility:play',
+                    disabled: !job.active
+                });
+            }
             return { ...job, modeLabel: job.isBatchJob ? 'Batch' : 'Queueable', rowActions };
         });
     }
@@ -160,6 +183,9 @@ export default class JobSequenceManager extends NavigationMixin(LightningElement
             case 'up':
             case 'down':
                 this.runDeploy(() => moveJob({ developerName: row.developerName, direction: action.name }), `${row.label} moved ${action.name}.`);
+                break;
+            case 'standalone':
+                this.runStandaloneJob(row);
                 break;
             case 'setup':
                 this[NavigationMixin.Navigate]({
@@ -237,6 +263,26 @@ export default class JobSequenceManager extends NavigationMixin(LightningElement
         } finally {
             this.pendingSaves--;
             this.loadJobs();
+        }
+    }
+
+    /**
+     * @description Runs one One Time job on its own, after confirming: no other One Time job runs. The run shows
+     * on the home page and in Run History.
+     * @param {Object} row The job's row
+     */
+    async runStandaloneJob(row) {
+        const confirmed = await LightningConfirm.open({
+            label: `Run ${row.label} on its own?`,
+            message: `Only ${row.label} runs, now, and it changes records exactly as a scheduled run would. Other One Time jobs don't run.`,
+            theme: 'warning'
+        });
+        if (!confirmed) return;
+        try {
+            await runStandalone({ developerName: row.developerName });
+            this.toast('success', 'Started', `${row.label} is running on its own. Follow it on the Job Sequencer home page.`);
+        } catch (error) {
+            this.toast('error', 'Not started', reduceError(error));
         }
     }
 

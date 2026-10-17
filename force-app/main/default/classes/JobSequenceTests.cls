@@ -23,6 +23,8 @@
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
  *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
  *   |  10/17/2026 |  Gary Butler      | Drop checks for the removed page redirects              |
+ *   |  10/17/2026 |  Gary Butler      | Read the test job's field values from JSON parameters   |
+ *   |  10/17/2026 |  Gary Butler      | Drop tests of the removed schedule and VF classes       |
  *
  */
 @IsTest
@@ -168,9 +170,8 @@ public with sharing class JobSequenceTests {
             if (sj.DeveloperName == 'TEST_FIELDSHIFT_FUNCTION') mainTest = sj;
         }
         Map<String,String> params = new Map<String,String>();
-        for (String param : mainTest.Parameters__c.split(',')) {
-            List<String> paramList = param.split(':');
-            params.put(paramList[0],paramList[1]);
+        for (JobSequenceVariables.FieldValue fv : JobSequenceVariables.parse(mainTest.Parameters__c).fieldValues) {
+            params.put(fv.field,fv.value);
         }
         Boolean testsPassed = false;
         Set<String> paramsFound = new Set<String>();
@@ -178,7 +179,6 @@ public with sharing class JobSequenceTests {
         for (User u : (List<User>) Database.query(js.query, AccessLevel.SYSTEM_MODE)) {
             for (String param : params.keySet()) {
                 String fldVal = u.getPopulatedFieldsAsMap().containsKey(param) ? String.valueOf(u.get(param)) : '';
-                if (param.containsIgnoreCase('Test.IsRunningTest')) paramsFound.add(param);
                 if (!paramsFound.contains(param)) {
                     if (fldVal == params.get(param)) {
                         paramsFound.add(param);
@@ -216,51 +216,6 @@ public with sharing class JobSequenceTests {
     }
 
     /**
-     * @description Verifies the hourly schedulable enqueues without error.
-     */
-    @IsTest static void JobSequenceHourlyTests() {
-        Test.startTest();
-        new JobSequenceHourly().execute(null);
-        Test.stopTest();
-    }
-
-    /**
-     * @description Verifies the daily schedulable enqueues without error.
-     */
-    @IsTest static void JobSequenceDailyTests() {
-        Test.startTest();
-        new JobSequenceDaily().execute(null);
-        Test.stopTest();
-    }
-
-    /**
-     * @description Verifies the weekly schedulable enqueues without error.
-     */
-    @IsTest static void JobSequenceWeeklyTests() {
-        Test.startTest();
-        new JobSequenceWeekly().execute(null);
-        Test.stopTest();
-    }
-
-    /**
-     * @description Verifies the monthly schedulable enqueues without error.
-     */
-    @IsTest static void JobSequenceMonthlyTests() {
-        Test.startTest();
-        new JobSequenceMonthly().execute(null);
-        Test.stopTest();
-    }
-
-    /**
-     * @description Verifies the yearly schedulable enqueues without error.
-     */
-    @IsTest static void JobSequenceYearlyTests() {
-        Test.startTest();
-        new JobSequenceYearly().execute(null);
-        Test.stopTest();
-    }
-
-    /**
      * @description Verifies scheduling all runs completes without error.
      */
     @IsTest static void JobSequenceUtilitiesScheduleAll() {
@@ -290,35 +245,6 @@ public with sharing class JobSequenceTests {
         System.assertEquals(adjustedOpp.Name,'test','The name was not set!');
         System.assert(adjustedOpp.IsPrivate,'Is Private was not set!');
 
-        Test.stopTest();
-    }
-
-    /**
-     * @description Verifies the controller page references and that each schedule method schedules its job.
-     */
-    @IsTest static void JobSequenceVisualforceContTests() {
-        Test.startTest();
-        JobSequenceVisualforceCont jsvc = new JobSequenceVisualforceCont();
-        jsvc.scheduleHourlyRun();
-        jsvc.scheduleDailyRun();
-        jsvc.scheduleWeeklyRun();
-        jsvc.scheduleMonthlyRun();
-        jsvc.scheduleQuarterlyRun();
-        jsvc.scheduleYearlyRun();
-        System.assertEquals(6,[SELECT Id FROM AsyncApexJob WITH SYSTEM_MODE].size(),'The correct number of jobs were not scheduled');
-        jsvc.scheduleAllRuns();
-
-        Test.stopTest();
-    }
-
-    /**
-     * @description Verifies the controller schedules all six runs.
-     */
-    @IsTest static void JobSequenceVisualforceContSchAllTests() {
-        Test.startTest();
-        JobSequenceVisualforceCont jsvc = new JobSequenceVisualforceCont();
-        jsvc.scheduleAllRuns();
-        System.assertEquals(6,[SELECT Id FROM AsyncApexJob WITH SYSTEM_MODE].size(),'The correct number of jobs were not scheduled');
         Test.stopTest();
     }
 

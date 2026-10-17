@@ -4,7 +4,7 @@
     <defaultValue>&#39;Id &lt;&gt; null&#39;</defaultValue>
     <externalId>false</externalId>
     <fieldManageability>SubscriberControlled</fieldManageability>
-    <inlineHelpText>The conditions that select the records. DO NOT include the WHERE keyword. Can use {0} (filled from the test parameters), :DateTimeVar (set from a DateTimeVar parameter) and {!Settings.Field__c} tokens.</inlineHelpText>
+    <inlineHelpText>The conditions that select the records. DO NOT include the WHERE keyword. Can use {!Var.name} variables from Job Parameters and {!Settings.Field__c}, {!Label.Name}, {!Mdt.Type__mdt.Record.Field__c}, {!Now}, {!Today} and {!UserId} tokens.</inlineHelpText>
     <label>Query - Where</label>
     <length>20000</length>
     <type>LongTextArea</type>

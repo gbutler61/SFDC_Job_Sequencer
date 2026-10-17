@@ -26,6 +26,7 @@
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
  *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
  *   |  10/17/2026 |  Gary Butler      | List its functions (JobSequenceFunctionCatalog)         |
+ *   |  10/17/2026 |  Gary Butler      | FieldShift reads the field values in Job Parameters     |
  *
  */
 global without sharing class JobSequenceDefaultHandler implements JobSequenceInterface, JobSequenceFunctionCatalog {
@@ -96,19 +97,14 @@ global without sharing class JobSequenceDefaultHandler implements JobSequenceInt
 
     /**
      * @description This method will shift field values to a new value
-     * The params must be set on the job sequence object
-     * The params must be formatted as follows:
-     *
-     * fieldApiName:NewValue
-     *
-     * Multiple values can be done using commas to deliminate
+     * The values come from the field values in the Job Parameters (js.fieldValuesByField)
      *
      * @param js    The job sequence wrapped object containing the logic needed to execute the function
      * @param scope The records to be worked with
      */
     @TestVisible void fieldShift(JobSequence js, List<SObject> scope) {
         if (!scope.isEmpty()) {
-            Map<String, String> params = js.paramStringsByStrings;
+            Map<String, String> params = js.fieldValuesByField;
             Map<String, Schema.SObjectField> fldMap = scope[0].getSObjectType().getDescribe().fields.getMap();
             if (params != null && !params.isEmpty()) {
                 for (SObject sobj : scope) {

@@ -25,6 +25,8 @@
  *   |  10/16/2026 |  Gary Butler      | Fix: check CronTrigger for existing scheduled run       |
  *   |  10/16/2026 |  Gary Butler      | Count DML failures; link errors to their run            |
  *   |  10/17/2026 |  Gary Butler      | Debug label format                                      |
+ *   |  10/17/2026 |  Gary Butler      | Schedule methods use the Scheduler (old classes gone)   |
+ *   |  10/17/2026 |  Gary Butler      | Doc: field values come from the JSON Job Parameters     |
  *
  */
 global without sharing class JobSequenceUtilities {
@@ -94,11 +96,8 @@ global without sharing class JobSequenceUtilities {
 
     /**
      * @description Updates field values on the SObject from the parameter map, casting each value to the
-     * field's type. The params must be formatted as follows:
-     *
-     * fieldApiName:NewValue
-     *
-     * Multiple values can be done using commas to deliminate
+     * field's type. FieldShift passes the field values from the Job Parameters (JobSequence.fieldValuesByField),
+     * keyed by lower-case field API name; the value 'null' clears the field.
      *
      * @param sobj      The sobject that will be changed
      * @param fldMap    The field map for the sobject's type
@@ -260,45 +259,65 @@ global without sharing class JobSequenceUtilities {
     }
 
     /**
-     * @description This function will schedule the hourly class
+     * @description Schedules the Hourly frequency the way the Job Sequence Scheduler tab does; does nothing when it
+     * is already scheduled.
      */
     global static void scheduleHourlyRun() {
-        setupScheduledRun('JobSequenceHourly',Label.Job_Sequence_Hourly_Cron);
+        scheduleFrequency('Hourly');
     }
 
     /**
-     * @description This function will schedule the daily class
+     * @description Schedules the Daily frequency the way the Job Sequence Scheduler tab does; does nothing when it
+     * is already scheduled.
      */
     global static void scheduleDailyRun() {
-        setupScheduledRun('JobSequenceDaily',Label.Job_Sequence_Daily_Cron);
+        scheduleFrequency('Daily');
     }
 
     /**
-     * @description This function will schedule the weekly class
+     * @description Schedules the Weekly frequency the way the Job Sequence Scheduler tab does; does nothing when it
+     * is already scheduled.
      */
     global static void scheduleWeeklyRun() {
-        setupScheduledRun('JobSequenceWeekly',Label.Job_Sequence_Weekly_Cron);
+        scheduleFrequency('Weekly');
     }
     
     /**
-     * @description This function will schedule the monthly class
+     * @description Schedules the Monthly frequency the way the Job Sequence Scheduler tab does; does nothing when it
+     * is already scheduled.
      */
     global static void scheduleMonthlyRun() {
-        setupScheduledRun('JobSequenceMonthly',Label.Job_Sequence_Monthly_Cron);
+        scheduleFrequency('Monthly');
     }
 
     /**
-     * @description This function will schedule the quarterly class
+     * @description Schedules the Quarterly frequency the way the Job Sequence Scheduler tab does; does nothing when it
+     * is already scheduled.
      */
     global static void scheduleQuarterlyRun() {
-        setupScheduledRun('JobSequenceQuarterly',Label.Job_Sequence_Quarterly_Cron);
+        scheduleFrequency('Quarterly');
     }
 
     /**
-     * @description This function will schedule the yearly class
+     * @description Schedules the Yearly frequency the way the Job Sequence Scheduler tab does; does nothing when it
+     * is already scheduled.
      */
     global static void scheduleYearlyRun() {
-        setupScheduledRun('JobSequenceYearly',Label.Job_Sequence_Yearly_Cron);
+        scheduleFrequency('Yearly');
+    }
+
+    /**
+     * @description Schedules a frequency with the Scheduler's single scheduled-run class. A frequency that is already
+     * scheduled is left as it is.
+     *
+     * @param frequency The frequency to schedule
+     */
+    private static void scheduleFrequency(String frequency) {
+        try {
+            JobSequenceSchedulerController.scheduleRun(frequency);
+        } catch (AuraHandledException e) {
+            System.debug(LoggingLevel.INFO, 'JobSequenceUtilities()::scheduleFrequency:  e: ' + e.getMessage());
+        }
     }
 
     /**

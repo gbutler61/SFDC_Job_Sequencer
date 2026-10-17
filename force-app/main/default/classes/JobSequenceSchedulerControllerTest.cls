@@ -1,4 +1,16 @@
 /**
+ * Copyright 2026 Gary Butler
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+/**
  * @description: **JobSequenceSchedulerControllerTest** -- Unit tests for JobSequenceSchedulerController: dashboard data,
  * scheduling (including sub-hourly slots and original per-frequency schedules), unscheduling and running now.
  * @author: Gary Butler
@@ -9,6 +21,8 @@
  *   | ----------- | ----------------- | ------------------------------------------------------- |
  *   |  10/16/2026 |  Gary Butler      | Initial Creation                                        |
  *   |  10/16/2026 |  Gary Butler      | Sub-hourly, legacy schedules and tracked Run Now        |
+ *   |  10/17/2026 |  Gary Butler      | One Time on-demand row and Run Now                      |
+ *   |  10/17/2026 |  Gary Butler      | Original per-frequency schedules removed                |
  *
  */
 @IsTest
@@ -43,7 +57,11 @@ private class JobSequenceSchedulerControllerTest {
         Test.stopTest();
 
         Assert.isTrue(data.sequencerEnabled, 'The sequencer should default to enabled');
-        Assert.areEqual(JobSequenceSchedulerController.FREQUENCIES.size(), data.frequencies.size(), 'Every frequency should be listed');
+        Assert.areEqual(JobSequenceSchedulerController.FREQUENCIES.size() + JobSequenceSchedulerController.ON_DEMAND_FREQUENCIES.size(),
+                data.frequencies.size(), 'Every frequency, and One Time, should be listed');
+        JobSequenceSchedulerController.FrequencyStatus oneTime = data.frequencies[data.frequencies.size() - 1];
+        Assert.areEqual('One Time', oneTime.frequency, 'One Time should be listed last');
+        Assert.isTrue(oneTime.isOnDemand && oneTime.isFullyScheduled, 'One Time is run on demand, never scheduled');
         for (JobSequenceSchedulerController.FrequencyStatus status : data.frequencies) {
             Assert.isFalse(status.isScheduled, status.frequency + ' should not be scheduled');
             Assert.areEqual(status.frequency == 'Daily' ? 2 : 0, status.recentErrorCount, 'Unexpected error count for ' + status.frequency);
@@ -69,7 +87,6 @@ private class JobSequenceSchedulerControllerTest {
         Assert.isNotNull(cronTriggerId, 'A scheduled job should be returned');
         Assert.isTrue(duplicateRejected, 'Scheduling the same frequency twice should be rejected');
         Assert.isTrue(hourly.isFullyScheduled, 'Hourly should show as scheduled');
-        Assert.isFalse(hourly.isLegacy, 'Hourly should use the single scheduled run class');
         Assert.isNotNull(hourly.nextFireTime, 'Hourly should have a next run time');
         Assert.areEqual(Label.Job_Sequence_Hourly_Cron, hourly.cronExpression, 'The default cron expression should be used');
     }
@@ -90,30 +107,6 @@ private class JobSequenceSchedulerControllerTest {
         Assert.areEqual(1, [SELECT COUNT() FROM CronTrigger WHERE CronJobDetail.Name = 'Job Sequencer: Every 15 Minutes (:45)' WITH SYSTEM_MODE],
                 'The :45 slot should exist');
         Assert.areEqual(12, JobSequenceSchedulerController.getSlots('Every 5 Minutes').size(), 'Every 5 minutes needs twelve slots');
-    }
-
-    /**
-     * @description Verifies a frequency scheduled with the original per-frequency class is recognized, not duplicated,
-     * and can be unscheduled.
-     */
-    @IsTest
-    static void legacyScheduleIsRecognized() {
-        Test.startTest();
-        JobSequenceUtilities.scheduleDailyRun();
-        JobSequenceSchedulerController.FrequencyStatus daily = findStatus('Daily');
-        Boolean duplicateRejected = false;
-        try {
-            JobSequenceSchedulerController.scheduleRun('Daily');
-        } catch (AuraHandledException e) {
-            duplicateRejected = e.getMessage().contains('already scheduled');
-        }
-        JobSequenceSchedulerController.unscheduleRun('Daily');
-        Test.stopTest();
-
-        Assert.isTrue(daily.isLegacy, 'The original class schedule should be flagged');
-        Assert.isTrue(daily.isFullyScheduled, 'The original class schedule counts as scheduled');
-        Assert.isTrue(duplicateRejected, 'It should not be scheduled a second time');
-        Assert.isFalse(findStatus('Daily').isScheduled, 'Unschedule should remove the original class schedule');
     }
 
     /**
@@ -221,16 +214,47 @@ private class JobSequenceSchedulerControllerTest {
     }
 
     /**
-     * @description Verifies the utilities scheduling no longer throws (or double schedules) when a run already exists.
+     * @description Verifies the utilities scheduling methods schedule through the Scheduler, once, without throwing
+     * when the frequency is already scheduled.
      */
     @IsTest
-    static void setupScheduledRunSkipsExistingSchedule() {
+    static void utilitiesScheduleThroughTheScheduler() {
         Test.startTest();
         JobSequenceUtilities.scheduleHourlyRun();
         JobSequenceUtilities.scheduleHourlyRun();
+        JobSequenceUtilities.scheduleAllRuns();
         Test.stopTest();
 
-        Assert.areEqual(1, [SELECT COUNT() FROM CronTrigger WHERE CronJobDetail.Name = 'JobSequenceHourly' WITH SYSTEM_MODE],
+        Assert.areEqual(1, [SELECT COUNT() FROM CronTrigger WHERE CronJobDetail.Name = 'Job Sequencer: Hourly' WITH SYSTEM_MODE],
                 'Hourly should be scheduled exactly once');
+        for (String frequency : new List<String>{'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'}) {
+            Assert.isTrue(findStatus(frequency).isFullyScheduled, frequency + ' should be scheduled by scheduleAllRuns');
+        }
+    }
+
+    /**
+     * @description Verifies Run Now accepts One Time, which can't be scheduled, and refuses it with no active jobs.
+     */
+    @IsTest
+    static void runNowAcceptsOneTime() {
+        //The org may have One Time jobs of its own; this test needs none
+        JobSequenceSchedulerController.activeJobCountsOverride = new Map<String, Integer>();
+        String message;
+        String scheduleMessage;
+        Test.startTest();
+        try {
+            JobSequenceSchedulerController.runNow('One Time');
+        } catch (AuraHandledException e) {
+            message = e.getMessage();
+        }
+        try {
+            JobSequenceSchedulerController.scheduleRun('One Time');
+        } catch (AuraHandledException e) {
+            scheduleMessage = e.getMessage();
+        }
+        Test.stopTest();
+
+        Assert.isTrue(message.contains('no active One Time'), 'One Time should be accepted and report no jobs: ' + message);
+        Assert.isTrue(scheduleMessage.contains('Unknown frequency'), 'One Time still cannot be scheduled: ' + scheduleMessage);
     }
 }

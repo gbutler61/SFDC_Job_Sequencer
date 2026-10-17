@@ -3,7 +3,7 @@
     <fullName>Parameters__c</fullName>
     <externalId>false</externalId>
     <fieldManageability>SubscriberControlled</fieldManageability>
-    <inlineHelpText>Name:Value pairs separated by commas, e.g. StageName:"Closed Lost", Description:Auto closed. Quotes are optional; use them around a value that contains a comma. Test.isRunningTest and !Test.isRunningTest swap in text for {0} in the Where, DateTimeVar=minutes sets :DateTimeVar, and {!Settings.Field__c} tokens use Job Sequencer Settings. See Job Sequencer Help.</inlineHelpText>
+    <inlineHelpText>JSON with the job's variables (used in the query as {!Var.name}, each with an optional test value), FieldShift's field values and a custom handler's parameters. Build it on the Sequence Jobs tab. See Job Sequencer Help.</inlineHelpText>
     <label>Job Parameters</label>
     <length>20000</length>
     <type>LongTextArea</type>

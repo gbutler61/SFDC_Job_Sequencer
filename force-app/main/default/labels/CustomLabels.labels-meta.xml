@@ -118,22 +118,6 @@ Stack Trace: {3}</value>
         <value>Job Sequence Error: Invalid Job Sequence Queue Job created!</value>
     </labels>
     <labels>
-        <fullName>Job_Sequence_Test_Is_Not_Running_Param</fullName>
-        <categories>Job Sequence</categories>
-        <language>en_US</language>
-        <protected>false</protected>
-        <shortDescription>Job Sequence - Test Is Not Running Param</shortDescription>
-        <value>!Test.isRunningTest</value>
-    </labels>
-    <labels>
-        <fullName>Job_Sequence_Test_Is_Running_Param</fullName>
-        <categories>Job Sequence</categories>
-        <language>en_US</language>
-        <protected>false</protected>
-        <shortDescription>Job Sequence - Test Is Running Param</shortDescription>
-        <value>Test.isRunningTest</value>
-    </labels>
-    <labels>
         <fullName>Job_Sequence_Valid_Job_Sequence_Record_Required</fullName>
         <categories>Job Sequence</categories>
         <language>en_US</language>

@@ -1,4 +1,16 @@
 /**
+ * Copyright 2026 Gary Butler
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+/**
  * @description jobSequenceEditor -- Modal for creating, cloning and editing a Sequence Job. Tests the job's query and
  * saves the record through JobSequenceManagerController, waiting for the asynchronous deployment to finish.
  * @author Gary Butler
@@ -17,7 +29,7 @@ import { ensureSubscribed, waitForDeployment } from 'c/jobSequenceDeployWatcher'
 const NUMBER_FIELDS = ['batchLimit', 'recordLimit'];
 const OTHER_FUNCTION = '__other__';
 // Shown in the editor footer while testing, to confirm the browser has the latest version; bumped on each deploy
-const BUILD_NUMBER = 6;
+const BUILD_NUMBER = 7;
 const QUERY_FIELD_LABELS = { selectFields: 'Query - Select', whereClause: 'Query - Where', orderBy: 'Query - OrderBy' };
 const CHECKBOX_FIELDS = ['active', 'isBatchJob', 'permDelete', 'allOrNone'];
 const DML_OPTIONS = [
@@ -148,8 +160,8 @@ function parseSoql(query) {
         where = 'Id != null';
         notes.push('The query had no WHERE, so Id != null was used (batch jobs need a WHERE).');
     }
-    if (/:\s*[A-Za-z_]/.test(where.replace(/'[^']*'/g, '')) && !/:\s*(g_)?DateTimeVar/i.test(where)) {
-        notes.push('The WHERE uses a bind variable (:name), which a sequence job can\'t supply; only :DateTimeVar is supported.');
+    if (/:\s*[A-Za-z_]/.test(where.replace(/'[^']*'/g, ''))) {
+        notes.push('The WHERE uses a bind variable (:name), which a sequence job can\'t supply. Define a variable in Job Parameters and use {!Var.name} instead.');
     }
 
     return {
@@ -180,33 +192,25 @@ function toDeveloperName(label) {
 }
 
 /**
- * @description The values of the Test.isRunningTest and !Test.isRunningTest entries in Job Parameters text.
- * @param {String} text The parameters text
- * @returns {String[]} The values, still quoted as written
+ * @description Reads Job Parameters JSON.
+ * @param {String} text The parameters
+ * @returns {Object} The parsed parameters, or an empty object when blank or not valid JSON
  */
-function splitTestValues(text) {
-    const values = [];
-    let inQuotes = false;
-    let current = '';
-    const entries = [];
-    for (const ch of (text || '').replace(/[\r\n]+/g, '')) {
-        if (ch === '"') inQuotes = !inQuotes;
-        if (ch === ',' && !inQuotes) {
-            entries.push(current);
-            current = '';
-        } else {
-            current += ch;
-        }
+function parseJobParameters(text) {
+    try {
+        const data = text && text.trim() ? JSON.parse(text) : {};
+        return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+    } catch (e) {
+        return {};
     }
-    entries.push(current);
-    entries.forEach((entry) => {
-        const colon = entry.indexOf(':');
-        if (colon < 1) return;
-        const name = entry.slice(0, colon).replace(/"/g, '').trim().toLowerCase();
-        if (name === 'test.isrunningtest' || name === '!test.isrunningtest') values.push(entry.slice(colon + 1).trim());
-    });
-    return values;
 }
+
+// Tokens offered in the Where chooser besides the job's own variables
+const BUILT_IN_TOKENS = [
+    { label: '{!Now}', value: '{!Now}', detail: 'When the job runs, as a GMT date/time' },
+    { label: '{!Today}', value: '{!Today}', detail: 'The day the job runs (GMT)' },
+    { label: '{!UserId}', value: '{!UserId}', detail: 'The Id of the user who scheduled the job, quoted' }
+];
 
 export default class JobSequenceEditor extends LightningModal {
     @api job;
@@ -244,8 +248,6 @@ export default class JobSequenceEditor extends LightningModal {
     buildNumber = BUILD_NUMBER;
     // Braces can't be written literally in a template attribute, so this help text is bound from here
     whereHelp = 'Do not include WHERE. Settings tokens such as {!Settings.RunRetentionDays__c} are replaced when the query runs.';
-    parametersHelp = 'Name:Value pairs separated by commas, e.g. StageName:"Closed Lost". Quotes are optional unless the value '
-        + 'contains a comma. See Help for the test parameters, DateTimeVar and {!Settings.Field__c} tokens.';
 
     /**
      * @description Loads the queryable objects in this org for the object picker.
@@ -297,9 +299,10 @@ export default class JobSequenceEditor extends LightningModal {
         return options;
     }
 
-    // The unit-test choice only changes the query when the parameters have Test.isRunningTest values
+    // The test choice only changes the query when a variable has a test value
     get hasTestParameters() {
-        return /test\.isrunningtest/i.test(this.form.parameters || '');
+        const variables = parseJobParameters(this.form.parameters).variables;
+        return Array.isArray(variables) && variables.some((v) => v && v.testValue !== undefined && v.testValue !== '');
     }
 
     // Test Only jobs only ever run inside unit tests, so that is the version of the query worth checking by default
@@ -336,7 +339,7 @@ export default class JobSequenceEditor extends LightningModal {
     }
 
     get hasBuiltQuery() {
-        return Boolean(this.builtQuery?.query || this.builtQuery?.errorMessage);
+        return Boolean(this.builtQuery?.query || this.builtQuery?.errorMessage || this.builtQuery?.problems?.length || this.builtQuery?.warnings?.length);
     }
 
     get builtRunTitle() {
@@ -500,17 +503,16 @@ export default class JobSequenceEditor extends LightningModal {
     }
 
     /**
-     * @description The variables defined in Job Parameters, offered first in the Where chooser so only a defined
-     * variable can be inserted: :DateTimeVar when a DateTimeVar value is set, otherwise {0} for swap-in text.
-     * @returns {Object[]} The variable options
+     * @description The variables defined in Job Parameters, then the built-in tokens, offered first in the Where
+     * chooser so only a defined variable can be inserted.
+     * @returns {Object[]} The variable and token options
      */
     get variableOptions() {
-        const testValues = splitTestValues(this.form.parameters);
-        if (!testValues.length) return [];
-        if (testValues.some((v) => /^"?\s*DateTimeVar\s*=/i.test(v))) {
-            return [{ label: ':DateTimeVar', value: ':DateTimeVar', kind: 'variable', group: 'Variables', detail: 'Relative date/time from Job Parameters' }];
-        }
-        return [{ label: '{0}', value: '{0}', kind: 'variable', group: 'Variables', detail: 'Swap-in text from Job Parameters' }];
+        const variables = parseJobParameters(this.form.parameters).variables;
+        const defined = (Array.isArray(variables) ? variables : [])
+            .filter((v) => v && /^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(v.name || ''))
+            .map((v) => ({ label: `{!Var.${v.name}}`, value: `{!Var.${v.name}}`, kind: 'variable', group: 'Variables', detail: v.type }));
+        return [...defined, ...BUILT_IN_TOKENS.map((t) => ({ ...t, kind: 'variable', group: 'Tokens' }))];
     }
 
     get insertExcludeValues() {

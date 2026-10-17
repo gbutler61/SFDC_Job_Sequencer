@@ -69,6 +69,13 @@ Each run is recorded as a **Job Sequence Run**. A run is skipped while the previ
 - Frequencies scheduled before 1.2.0 keep running on the original per-frequency classes (e.g. `JobSequenceHourly`), which don't skip a run that is still going. The Scheduler marks them; unschedule and schedule again to switch them over.
 - Saving from the **Sequence Jobs** tab needs Customize Application. If a save fails to start in an org that installed the package, enable **Setup > Apex Settings > "Deploy Metadata from Non-Certified Package Versions via Apex"**.
 
+### Check after upgrading (try a sandbox first)
+These haven't been verified in an org that installed the package, so check them after the upgrade, ideally in a sandbox before production:
+
+1. **Saving a Sequence Job works.** Open the **Sequence Jobs** tab, edit a job, change something small and save. If the save never starts or fails, turn on the Apex Settings checkbox above and try again.
+2. **Your edits to packaged Sequence Job records are kept.** The package ships three Sequence Job records: `TEST_FIELDSHIFT_FUNCTION` (used by the package's tests, so leave it as shipped) and the `JOBSEQ_PURGE_RUNS` / `JOBSEQ_PURGE_ERRORS` cleanup jobs. If you changed any of them, note the values before upgrading and compare afterwards. If the upgrade reset them, re-apply your changes, or clone the job and deactivate the original so later upgrades leave your copy alone.
+3. **Scheduled frequencies keep running.** On the **Job Sequence Scheduler** tab, check every frequency you had scheduled is still there with a next run time, and that the next runs show up on the home page.
+
 # Security model
 Sequence jobs run in **system mode**. Their queries and DML ignore the running user's object permissions and field-level security, and the framework classes are `without sharing`, so record sharing doesn't limit them either. The original package has always worked this way. From API 67.0, Apex defaults to user mode, so the code marks system mode explicitly to keep that behavior.
 

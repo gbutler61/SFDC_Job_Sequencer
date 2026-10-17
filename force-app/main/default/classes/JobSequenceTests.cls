@@ -21,6 +21,7 @@
  *   |  10/26/2019 |  Jason Hardy      | Initial Creation (original author)                      |
  *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
+ *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
  *
  */
 @IsTest
@@ -29,9 +30,9 @@ public with sharing class JobSequenceTests {
      * @description Test setup: touches the running user so the test context has a committed user record.
      */
     @TestSetup static void createData() {
-        User thisUser = [SELECT Id FROM User WHERE Id =:UserInfo.getUserId()];
+        User thisUser = [SELECT Id FROM User WHERE Id =:UserInfo.getUserId() WITH SYSTEM_MODE];
         System.runAs(thisUser) {
-            update thisUser;
+            update as system thisUser;
         }
     }
 
@@ -41,10 +42,10 @@ public with sharing class JobSequenceTests {
     @IsTest static void JobSequenceClassRetryTest() {
         Test.startTest();
         JobSequence js = new JobSequence();
-        List<Job_Sequence_Error__c> jse = [SELECT Id FROM Job_Sequence_Error__c];
+        List<Job_Sequence_Error__c> jse = [SELECT Id FROM Job_Sequence_Error__c WITH SYSTEM_MODE];
         System.assert(jse.isEmpty(),'Errors already present!');
         String frequency = 'Test Only';
-        List<Sequence_Job__mdt> sjs = Database.query(JobSequenceQueueable.constructSequenceJobQuery(frequency));
+        List<Sequence_Job__mdt> sjs = Database.query(JobSequenceQueueable.constructSequenceJobQuery(frequency), AccessLevel.SYSTEM_MODE);
         js = new JobSequence(sjs[0]);
         js.scheduleRetry(js);
         js.numRetries = Integer.valueOf(js.sjcs.MaxRetries__c)+1;
@@ -70,11 +71,11 @@ public with sharing class JobSequenceTests {
      */
     @IsTest static void JobSequenceBatchInvalidFunctionTest() {
         Test.startTest();
-        List<Job_Sequence_Error__c> jse = [SELECT Id FROM Job_Sequence_Error__c];
+        List<Job_Sequence_Error__c> jse = [SELECT Id FROM Job_Sequence_Error__c WITH SYSTEM_MODE];
         System.assert(jse.isEmpty(),'Errors already present!');
         JobSequence js = new JobSequence();
         String frequency = 'Test Only';
-        List<Sequence_Job__mdt> sjs = Database.query(JobSequenceQueueable.constructSequenceJobQuery(frequency));
+        List<Sequence_Job__mdt> sjs = Database.query(JobSequenceQueueable.constructSequenceJobQuery(frequency), AccessLevel.SYSTEM_MODE);
         js = new JobSequence(sjs[0]);
         js.executionJob = 'thisIsNotAValidFunction';
         js.query = 'SELECT Id FROM User LIMIT 1';
@@ -82,7 +83,7 @@ public with sharing class JobSequenceTests {
         JobSequenceBatch jsb = new JobSequenceBatch(js);
         Database.executeBatch(jsb,200);
         Test.stopTest();
-        jse = [SELECT Id FROM Job_Sequence_Error__c];
+        jse = [SELECT Id FROM Job_Sequence_Error__c WITH SYSTEM_MODE];
         System.assert(!jse.isEmpty(),'Errors were not created!');
     }
 
@@ -91,14 +92,14 @@ public with sharing class JobSequenceTests {
      */
     @IsTest static void JobSequenceExeBadHandlerTest() {
         Job_Sequence_Error__c jse = new Job_Sequence_Error__c(JobFrequency__c='Test Only',BatchJobId__c='Test',Exception__c='Testing');
-        insert jse;
+        insert as system jse;
         Test.startTest();
         JobSequence js = constructTestJobSequenceErrorJobSequenceObj();
         js.handlerName = 'JobSequenceTests';
         JobSequenceExe.executeQueueable(js);
 
         Test.stopTest();
-        List<Job_Sequence_Error__c> jses = [SELECT Id FROM Job_Sequence_Error__c WHERE Id <> :jse.Id];
+        List<Job_Sequence_Error__c> jses = [SELECT Id FROM Job_Sequence_Error__c WHERE Id <> :jse.Id WITH SYSTEM_MODE];
         js.sendErrorEmail(null,jses);
         System.assert(!jses.isEmpty(),'Errors were not created for a bad handler name!');
     }
@@ -108,13 +109,13 @@ public with sharing class JobSequenceTests {
      */
     @IsTest static void JobSequenceExeDeleteTest() {
         Job_Sequence_Error__c jse = new Job_Sequence_Error__c(JobFrequency__c='Test Only',BatchJobId__c='Test',Exception__c='Testing');
-        insert jse;
+        insert as system jse;
         Test.startTest();
         JobSequence js = constructTestJobSequenceErrorJobSequenceObj();
         JobSequenceExe.executeQueueable(js);
 
         Test.stopTest();
-        List<Job_Sequence_Error__c> jses = [SELECT Id FROM Job_Sequence_Error__c WHERE Id =:jse.Id];
+        List<Job_Sequence_Error__c> jses = [SELECT Id FROM Job_Sequence_Error__c WHERE Id =:jse.Id WITH SYSTEM_MODE];
         System.assert(jses.isEmpty(),'The errors were not deleted');
     }
 
@@ -123,14 +124,14 @@ public with sharing class JobSequenceTests {
      */
     @IsTest static void JobSequenceExeUpsertTests() {
         Job_Sequence_Error__c jse = new Job_Sequence_Error__c(JobFrequency__c='Test Only',BatchJobId__c='Test',Exception__c='Testing');
-        insert jse;
+        insert as system jse;
         Test.startTest();
         JobSequence js = constructTestJobSequenceErrorJobSequenceObj();
         js.executionJob = 'UPSERT';
         JobSequenceExe.executeQueueable(js);
 
         Test.stopTest();
-        List<Job_Sequence_Error__c> jses = [SELECT Id FROM Job_Sequence_Error__c WHERE Id <> :jse.Id];
+        List<Job_Sequence_Error__c> jses = [SELECT Id FROM Job_Sequence_Error__c WHERE Id <> :jse.Id WITH SYSTEM_MODE];
         System.assert(jses.isEmpty(),'New error records were created!');
     }
 
@@ -139,17 +140,17 @@ public with sharing class JobSequenceTests {
      */
     @IsTest static void JobSequenceQueueableInvalidFunctionTest() {
         Test.startTest();
-        List<Job_Sequence_Error__c> jse = [SELECT Id FROM Job_Sequence_Error__c];
+        List<Job_Sequence_Error__c> jse = [SELECT Id FROM Job_Sequence_Error__c WITH SYSTEM_MODE];
         System.assert(jse.isEmpty(),'Errors already present!');
         JobSequence js = new JobSequence();
         String frequency = 'Test Only';
-        List<Sequence_Job__mdt> sjs = Database.query(JobSequenceQueueable.constructSequenceJobQuery(frequency));
+        List<Sequence_Job__mdt> sjs = Database.query(JobSequenceQueueable.constructSequenceJobQuery(frequency), AccessLevel.SYSTEM_MODE);
         sjs[0].ExecutionJob__c = 'thisIsNotAValidFunction';
         sjs[0].IsBatchJob__c = false;
         js = new JobSequence(sjs[0]);
         System.enqueueJob(new JobSequenceQueueable(js,true));
         Test.stopTest();
-        jse = [SELECT Id FROM Job_Sequence_Error__c];
+        jse = [SELECT Id FROM Job_Sequence_Error__c WITH SYSTEM_MODE];
         System.assert(!jse.isEmpty(),'Errors were not created!');
     }
 
@@ -160,7 +161,7 @@ public with sharing class JobSequenceTests {
         Test.startTest();
         System.enqueueJob(new JobSequenceQueueable('Test Only'));
         Test.stopTest();
-        List<Sequence_Job__mdt> testOnlySequences = Database.query(JobSequenceQueueable.constructSequenceJobQuery('Test Only'));
+        List<Sequence_Job__mdt> testOnlySequences = Database.query(JobSequenceQueueable.constructSequenceJobQuery('Test Only'), AccessLevel.SYSTEM_MODE);
         Sequence_Job__mdt mainTest;
         for (Sequence_Job__mdt sj : testOnlySequences) {
             if (sj.DeveloperName == 'TEST_FIELDSHIFT_FUNCTION') mainTest = sj;
@@ -173,7 +174,7 @@ public with sharing class JobSequenceTests {
         Boolean testsPassed = false;
         Set<String> paramsFound = new Set<String>();
         JobSequence js = new JobSequence(mainTest);
-        for (User u : (List<User>) Database.query(js.query)) {
+        for (User u : (List<User>) Database.query(js.query, AccessLevel.SYSTEM_MODE)) {
             for (String param : params.keySet()) {
                 String fldVal = u.getPopulatedFieldsAsMap().containsKey(param) ? String.valueOf(u.get(param)) : '';
                 if (param.containsIgnoreCase('Test.IsRunningTest')) paramsFound.add(param);
@@ -196,10 +197,10 @@ public with sharing class JobSequenceTests {
      */
     @IsTest static void JobSequenceSchedulableTests() {
         Test.startTest();
-        List<Job_Sequence_Error__c> jse = [SELECT Id FROM Job_Sequence_Error__c];
+        List<Job_Sequence_Error__c> jse = [SELECT Id FROM Job_Sequence_Error__c WITH SYSTEM_MODE];
         System.assert(jse.isEmpty(),'Errors already present!');
         String frequency = 'Test Only';
-        List<Sequence_Job__mdt> sjs = Database.query(JobSequenceQueueable.constructSequenceJobQuery(frequency));
+        List<Sequence_Job__mdt> sjs = Database.query(JobSequenceQueueable.constructSequenceJobQuery(frequency), AccessLevel.SYSTEM_MODE);
         JobSequence js = new JobSequence(sjs[0]);
         JobSequenceSchedulable jss = new JobSequenceSchedulable(js);
         jss.execute(null);
@@ -209,7 +210,7 @@ public with sharing class JobSequenceTests {
         jss = new JobSequenceSchedulable(js,true);
         System.schedule('testSchedule', '0 0 * * * ?', jss);
         Test.stopTest();
-        jse = [SELECT Id FROM Job_Sequence_Error__c];
+        jse = [SELECT Id FROM Job_Sequence_Error__c WITH SYSTEM_MODE];
         System.assert(!jse.isEmpty(),'Errors were not created!');
     }
 
@@ -305,7 +306,7 @@ public with sharing class JobSequenceTests {
         jsvc.scheduleMonthlyRun();
         jsvc.scheduleQuarterlyRun();
         jsvc.scheduleYearlyRun();
-        System.assertEquals(6,[SELECT Id FROM AsyncApexJob].size(),'The correct number of jobs were not scheduled');
+        System.assertEquals(6,[SELECT Id FROM AsyncApexJob WITH SYSTEM_MODE].size(),'The correct number of jobs were not scheduled');
         jsvc.scheduleAllRuns();
 
         Test.stopTest();
@@ -318,7 +319,7 @@ public with sharing class JobSequenceTests {
         Test.startTest();
         JobSequenceVisualforceCont jsvc = new JobSequenceVisualforceCont();
         jsvc.scheduleAllRuns();
-        System.assertEquals(6,[SELECT Id FROM AsyncApexJob].size(),'The correct number of jobs were not scheduled');
+        System.assertEquals(6,[SELECT Id FROM AsyncApexJob WITH SYSTEM_MODE].size(),'The correct number of jobs were not scheduled');
         Test.stopTest();
     }
 

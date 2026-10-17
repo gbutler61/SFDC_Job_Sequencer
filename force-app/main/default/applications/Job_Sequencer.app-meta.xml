@@ -6,8 +6,9 @@
     <isNavAutoTempTabsDisabled>false</isNavAutoTempTabsDisabled>
     <isNavPersonalizationDisabled>false</isNavPersonalizationDisabled>
     <label>Job Sequencer</label>
-    <tabs>Job_Sequencer_Help</tabs>
+    <tabs>Job_Sequencer_Guide</tabs>
+    <tabs>Job_Sequence_Scheduler</tabs>
     <tabs>Job_Sequence_Error__c</tabs>
     <tabs>Manage_Sequence_Jobs</tabs>
-    <tabs>Manage_Sequence_Job_Settings</tabs>
+    <tabs>Job_Sequencer_Settings</tabs>
 </CustomApplication>

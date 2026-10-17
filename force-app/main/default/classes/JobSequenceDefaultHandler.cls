@@ -24,6 +24,7 @@
  *   |  10/26/2019 |  Jason Hardy      | Initial Creation (original author)                      |
  *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
+ *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
  *
  */
 global without sharing class JobSequenceDefaultHandler implements JobSequenceInterface {
@@ -76,7 +77,7 @@ global without sharing class JobSequenceDefaultHandler implements JobSequenceInt
         //This code will look for any job sequence errors for a queueable job and send an email with the errors found
         if (js != null && !js.isBatchJob) {
             if (js.jobId != null) {
-                List<Job_Sequence_Error__c> errors = [SELECT Id FROM Job_Sequence_Error__c WHERE BatchJobId__c = :js.jobId];
+                List<Job_Sequence_Error__c> errors = [SELECT Id FROM Job_Sequence_Error__c WHERE BatchJobId__c = :js.jobId WITH SYSTEM_MODE];
                 if (!errors.isEmpty()) js.sendErrorEmail(js.jobId, errors);
             }
         }

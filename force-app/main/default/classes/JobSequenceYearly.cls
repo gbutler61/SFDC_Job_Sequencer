@@ -30,6 +30,7 @@
  *   |  10/26/2019 |  Jason Hardy      | Initial Creation (original author)                      |
  *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
+ *   |  10/16/2026 |  Gary Butler      | API version 45.0 -> 68.0                                |
  *
  */
 public with sharing class JobSequenceYearly implements Schedulable {

@@ -22,6 +22,7 @@
  *   |  10/26/2019 |  Jason Hardy      | Initial Creation (original author)                      |
  *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
+ *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
  *
  */
 global with sharing class JobSequenceQueueable implements Queueable, Database.AllowsCallouts {
@@ -35,7 +36,7 @@ global with sharing class JobSequenceQueueable implements Queueable, Database.Al
     global void execute(QueueableContext context) {
         if (js != null && js.sj != null && js.sjcs.Enabled__c) {
             try {
-                Boolean canProcessBatch = (js.isBatchJob && [SELECT count() FROM AsyncApexJob WHERE JobType='BatchApex' AND (Status = 'Processing' OR Status = 'Preparing')] < 5);
+                Boolean canProcessBatch = (js.isBatchJob && [SELECT count() FROM AsyncApexJob WHERE JobType='BatchApex' AND (Status = 'Processing' OR Status = 'Preparing') WITH SYSTEM_MODE] < 5);
 
                 if (canProcessBatch && js.isBatchJob) Database.executeBatch(new JobSequenceBatch(js),js.batchSize);
                 if (!canProcessBatch && js.isBatchJob) new JobSequence().scheduleRetry(js);
@@ -48,7 +49,7 @@ global with sharing class JobSequenceQueueable implements Queueable, Database.Al
             } catch(Exception e) {
                 System.debug(LoggingLevel.Error, '*** e: ' + e);
                 js.logError(context.getJobId(), e, null);
-                if (js != null && js.jobId != null) js.sendErrorEmail(js.jobId, [SELECT Id FROM Job_Sequence_Error__c WHERE BatchJobId__c = :js.jobId]);
+                if (js != null && js.jobId != null) js.sendErrorEmail(js.jobId, [SELECT Id FROM Job_Sequence_Error__c WHERE BatchJobId__c = :js.jobId WITH SYSTEM_MODE]);
             }
         }
     }
@@ -134,7 +135,7 @@ global with sharing class JobSequenceQueueable implements Queueable, Database.Al
         frequency = String.isBlank(frequency) && js != null ? js.jobFrequency : frequency;
         if (String.isBlank(frequency)) throw new JobSequenceException(Label.Job_Sequence_JobSequenceQueueable_Initialization_Error);
 
-        returnList = Database.query(constructSequenceJobQuery(frequency));
+        returnList = Database.query(constructSequenceJobQuery(frequency), AccessLevel.SYSTEM_MODE);
         if (returnList.isEmpty() && !frequency.equalsIgnoreCase('notapplicable')) throw new JobSequenceException('No active Sequence Jobs were found for '+frequency+' frequency');
         return returnList;
     }

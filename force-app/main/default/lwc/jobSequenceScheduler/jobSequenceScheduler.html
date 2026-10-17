@@ -1,0 +1,140 @@
+<template>
+    <lightning-card title="Job Sequence Schedules" icon-name="standard:scheduling_constraint">
+        <div slot="actions">
+            <lightning-button
+                label="Schedule All"
+                onclick={handleScheduleAll}
+                disabled={isScheduleAllDisabled}
+            ></lightning-button>
+            <lightning-button-icon
+                icon-name="utility:refresh"
+                alternative-text="Refresh"
+                title="Refresh"
+                onclick={handleRefresh}
+                disabled={isBusy}
+                class="slds-m-left_x-small"
+            ></lightning-button-icon>
+        </div>
+
+        <div class="slds-p-horizontal_medium">
+            <template lwc:if={isBusy}>
+                <lightning-spinner alternative-text="Working" size="small"></lightning-spinner>
+            </template>
+
+            <template lwc:if={loadError}>
+                <div class="slds-notify slds-notify_alert slds-alert_error" role="alert">
+                    <h2>The schedules could not be loaded: {loadError}</h2>
+                </div>
+            </template>
+
+            <template lwc:if={showDisabledWarning}>
+                <div class="slds-notify slds-notify_alert slds-alert_warning slds-m-bottom_medium" role="status">
+                    <h2>
+                        The job sequencer is turned off. Scheduled runs still start, but no sequence jobs are executed.
+                        <lightning-button
+                            variant="base"
+                            label="Open Job Sequencer Settings"
+                            onclick={handleOpenSettings}
+                            class="slds-m-left_x-small"
+                        ></lightning-button>
+                    </h2>
+                </div>
+            </template>
+
+            <template lwc:if={hasRows}>
+                <p class="slds-m-bottom_small slds-text-color_weak">
+                    Each frequency runs its active sequence jobs in order. Errors are counted for the last
+                    {errorLookbackDays} days.
+                </p>
+                <table class="slds-table slds-table_bordered slds-table_cell-buffer" aria-label="Job sequence schedules">
+                    <thead>
+                        <tr class="slds-line-height_reset">
+                            <th scope="col"><div class="slds-truncate" title="Frequency">Frequency</div></th>
+                            <th scope="col"><div class="slds-truncate" title="Status">Status</div></th>
+                            <th scope="col"><div class="slds-truncate" title="Next Run">Next Run</div></th>
+                            <th scope="col"><div class="slds-truncate" title="Last Run">Last Run</div></th>
+                            <th scope="col"><div class="slds-truncate" title="Active Jobs">Active Jobs</div></th>
+                            <th scope="col"><div class="slds-truncate" title="Recent Errors">Recent Errors</div></th>
+                            <th scope="col"><div class="slds-truncate" title="Actions">Actions</div></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template for:each={rows} for:item="row">
+                            <tr key={row.frequency}>
+                                <th scope="row">{row.frequency}</th>
+                                <td>
+                                    <lightning-badge label={row.statusLabel} class={row.statusClass}></lightning-badge>
+                                </td>
+                                <td>
+                                    <template lwc:if={row.nextFireTime}>
+                                        <lightning-formatted-date-time
+                                            value={row.nextFireTime}
+                                            year="numeric"
+                                            month="short"
+                                            day="numeric"
+                                            hour="numeric"
+                                            minute="2-digit"
+                                        ></lightning-formatted-date-time>
+                                    </template>
+                                    <template lwc:else>—</template>
+                                </td>
+                                <td>
+                                    <template lwc:if={row.previousFireTime}>
+                                        <lightning-formatted-date-time
+                                            value={row.previousFireTime}
+                                            year="numeric"
+                                            month="short"
+                                            day="numeric"
+                                            hour="numeric"
+                                            minute="2-digit"
+                                        ></lightning-formatted-date-time>
+                                    </template>
+                                    <template lwc:else>—</template>
+                                </td>
+                                <td>{row.activeJobCount}</td>
+                                <td>
+                                    <template lwc:if={row.recentErrorCount}>
+                                        <lightning-button
+                                            variant="base"
+                                            label={row.recentErrorCount}
+                                            title="Open Job Sequence Errors"
+                                            onclick={handleOpenErrors}
+                                            class="slds-text-color_error"
+                                        ></lightning-button>
+                                    </template>
+                                    <template lwc:else>0</template>
+                                </td>
+                                <td>
+                                    <lightning-button-group>
+                                        <template lwc:if={row.isScheduled}>
+                                            <lightning-button
+                                                label="Unschedule"
+                                                data-frequency={row.frequency}
+                                                onclick={handleUnschedule}
+                                                disabled={isBusy}
+                                            ></lightning-button>
+                                        </template>
+                                        <template lwc:else>
+                                            <lightning-button
+                                                label="Schedule"
+                                                data-frequency={row.frequency}
+                                                onclick={handleSchedule}
+                                                disabled={isBusy}
+                                            ></lightning-button>
+                                        </template>
+                                        <lightning-button
+                                            label="Run Now"
+                                            data-frequency={row.frequency}
+                                            onclick={handleRunNow}
+                                            disabled={row.isRunNowDisabled}
+                                        ></lightning-button>
+                                    </lightning-button-group>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </template>
+        </div>
+    </lightning-card>
+</template>

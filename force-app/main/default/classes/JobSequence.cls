@@ -22,6 +22,7 @@
  *   |  10/26/2019 |  Jason Hardy      | Initial Creation (original author)                      |
  *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
+ *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
  *
  */
 global without sharing class JobSequence {
@@ -94,7 +95,7 @@ global without sharing class JobSequence {
                 this.sjcs = (Sequence_Jobs_Settings__c) Sequence_Jobs_Settings__c.SObjectType.newSObject(null, true);
                 this.sjcs.Name = 'default';
                 //Not actually upserting here during testing because it can be problematic when running parallel tests
-                if (!Test.isRunningTest()) upsert this.sjcs;
+                if (!Test.isRunningTest()) upsert as system this.sjcs;
             }
             return sjcs;
         }

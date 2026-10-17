@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomTab xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Edits the org-wide Sequence Jobs Settings with the jobSequenceSettings LWC. Replaces Manage Sequence Job Settings.</description>
+    <label>Job Sequencer Settings</label>
+    <lwcComponent>jobSequenceSettings</lwcComponent>
+    <motif>Custom67: Gears</motif>
+</CustomTab>

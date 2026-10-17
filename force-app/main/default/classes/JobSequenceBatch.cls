@@ -21,6 +21,7 @@
  *   |  10/26/2019 |  Jason Hardy      | Initial Creation (original author)                      |
  *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
+ *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
  *
  */
 public without sharing class JobSequenceBatch implements Database.Batchable<SObject>,Database.Stateful, Database.AllowsCallouts {
@@ -36,10 +37,10 @@ public without sharing class JobSequenceBatch implements Database.Batchable<SObj
         Database.QueryLocator returnLocator;
         try {
             js.query = String.isBlank(js.query) ? 'SELECT Id FROM User LIMIT 0' : js.query;
-            returnLocator = Database.getQueryLocator(js.query);
+            returnLocator = Database.getQueryLocator(js.query, AccessLevel.SYSTEM_MODE);
         } catch (Exception e) {
             js.logError(BC.getJobId(), e, null);
-            returnLocator = Database.getQueryLocator('SELECT Id FROM '+js.query.toUpperCase().substringAfterLast(' FROM ').substringBefore(' ')+' LIMIT 0');
+            returnLocator = Database.getQueryLocator('SELECT Id FROM '+js.query.toUpperCase().substringAfterLast(' FROM ').substringBefore(' ')+' LIMIT 0', AccessLevel.SYSTEM_MODE);
         }
 
         return returnLocator;
@@ -81,7 +82,7 @@ public without sharing class JobSequenceBatch implements Database.Batchable<SObj
      * @param js    The job sequence
      */
     private static void handleFinish(Database.BatchableContext bc, JobSequence js) {
-        List<Job_Sequence_Error__c> errors = [SELECT Id FROM Job_Sequence_Error__c WHERE BatchJobId__c = :BC.getJobId()];
+        List<Job_Sequence_Error__c> errors = [SELECT Id FROM Job_Sequence_Error__c WHERE BatchJobId__c = :BC.getJobId() WITH SYSTEM_MODE];
         if (!errors.isEmpty()) js.sendErrorEmail(bc.getJobId(), errors);
         System.enqueueJob(new JobSequenceQueueable(js));
     }

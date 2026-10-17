@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomTab xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Shows and manages the scheduled runs for each job sequence frequency (jobSequenceScheduler LWC).</description>
+    <label>Job Sequence Scheduler</label>
+    <lwcComponent>jobSequenceScheduler</lwcComponent>
+    <motif>Custom25: Alarm clock</motif>
+</CustomTab>

@@ -1,4 +1,4 @@
-> **About this fork:** This is a fork of [coldeagle/SFDC_Job_Sequencer](https://github.com/coldeagle/SFDC_Job_Sequencer), created and copyrighted by Jason Hardy (BSD 3-Clause, see [LICENSE](LICENSE)). It exists solely to change the Sequence Job fields **Job Parameters** (`Parameters__c`), **Query - Select** (`Select__c`) and **Query - Where** (`Where__c`) from Text Area to Long Text Area (20,000 characters), so sequence jobs can hold more complex queries. ApexDoc comments were also added to the classes. All other functionality is Jason Hardy's original work.
+> **About this fork:** This is a fork of [coldeagle/SFDC_Job_Sequencer](https://github.com/coldeagle/SFDC_Job_Sequencer), created and copyrighted by Jason Hardy (BSD 3-Clause, see [LICENSE](LICENSE)). It exists solely to change the Sequence Job fields **Job Parameters** (`Parameters__c`), **Query - Select** (`Select__c`) and **Query - Where** (`Where__c`) from Text Area to Long Text Area (20,000 characters), so sequence jobs can hold more complex queries. ApexDoc comments were also added to the classes. Version 1.1.0 adds the Job Sequence Scheduler and Job Sequencer Settings tabs (Lightning Web Components), the Job Sequencer Admin permission set, and the move to API 68.0. The sequencing engine and all other functionality are Jason Hardy's original work.
 
 # What is the Job Sequencer
 The tool provides it's users with the ability to schedule jobs on a hourly, daily, weekly, monthly, quarterly or yearly basis. Sequence jobs are created with a frequency based on those Schedules.
@@ -44,8 +44,26 @@ Then when the sequence job is run, all of the opportunities queried would have t
 
 Developers also have the option of creating additional functions that can be used. More details can be found in the "Job Sequencer Help" tab as well as the code comments of the of the "JobSequenceDefaultHandler" class. 
 
-# Link to Unlocked Package Installer
-Job Sequencer 1.0.0 (unlocked package, no namespace):
+# Managing the Job Sequencer
+Assign the **Job Sequencer Admin** permission set to anyone who manages the sequencer. It gives access to the Job Sequencer app and these tabs:
 
-- Production / Developer Edition: https://login.salesforce.com/packaging/installPackage.apexp?p0=04tjV000000AkETQA0
-- Sandbox: https://test.salesforce.com/packaging/installPackage.apexp?p0=04tjV000000AkETQA0
+- **Job Sequence Scheduler**: shows whether each frequency (Hourly through Yearly) is scheduled, with its next and last run, active sequence jobs and recent errors. From here you can schedule, unschedule or run a frequency now.
+- **Job Sequencer Settings**: the org-wide switch that turns the sequencer on or off, plus the retry settings.
+- **Job Sequence Errors**: what went wrong in each run.
+- **Manage Sequence Jobs**: the Sequence Job records in Setup. This tab still needs the Customize Application permission.
+- **Job Sequencer Help**: the full guide.
+
+# Security model
+Sequence jobs run in **system mode**. Their queries and DML ignore the running user's object permissions and field-level security, and the framework classes are `without sharing`, so record sharing doesn't limit them either. The original package has always worked this way. From API 67.0, Apex defaults to user mode, so the code marks system mode explicitly to keep that behavior.
+
+What that means for admins:
+
+- **Anyone who can edit Sequence Job records can change or delete any data.** Editing custom metadata needs Customize Application, so control who has that permission.
+- **Jobs run as the user who scheduled them.** If that user is deactivated, the scheduled runs stop. The runs also show that user as Last Modified By, and error emails go to them when a job has no notification email. Consider scheduling from a dedicated user that won't be deactivated when someone leaves.
+- **Triggers, flows, validation rules and duplicate rules still run** on the records a job changes, and they can still make a job fail.
+
+# Link to Unlocked Package Installer
+Job Sequencer 1.1.0 (unlocked package, no namespace). Installing it over 1.0.0 upgrades in place; your Sequence Job records and settings are kept.
+
+- Production / Developer Edition: https://login.salesforce.com/packaging/installPackage.apexp?p0=04tjV000000AkO9QAK
+- Sandbox: https://test.salesforce.com/packaging/installPackage.apexp?p0=04tjV000000AkO9QAK

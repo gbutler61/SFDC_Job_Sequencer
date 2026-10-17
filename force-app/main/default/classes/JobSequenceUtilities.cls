@@ -21,6 +21,8 @@
  *   |  10/26/2019 |  Jason Hardy      | Initial Creation (original author)                      |
  *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
+ *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
+ *   |  10/16/2026 |  Gary Butler      | Fix: check CronTrigger for existing scheduled run       |
  *
  */
 global without sharing class JobSequenceUtilities {
@@ -67,8 +69,8 @@ global without sharing class JobSequenceUtilities {
         if (records != null && !records.isEmpty()) {
             try {
                 switch on operationType.toUpperCase() {
-                    when 'INSERT' { Database.insert(records,allOrNone);}
-                    when 'UPDATE' { Database.update(records,allOrNone);}
+                    when 'INSERT' { Database.insert(records,allOrNone,AccessLevel.SYSTEM_MODE);}
+                    when 'UPDATE' { Database.update(records,allOrNone,AccessLevel.SYSTEM_MODE);}
                     when 'DELETE' { handleDynamicDeletes(records,allOrNone,permDelete);}
                     when 'UPSERT' { handleDynamicUpsert(records,extIdField);}
                     when else {
@@ -142,7 +144,7 @@ global without sharing class JobSequenceUtilities {
     global static void handleDynamicDeletes(List<SObject> records, Boolean allOrNone, Boolean permDelete) {
         allOrNone = allOrNone == null ? false : allOrNone;
         permDelete = permDelete == null ? false : permDelete;
-        Database.delete(records,allOrNone);
+        Database.delete(records,allOrNone,AccessLevel.SYSTEM_MODE);
         if (permDelete != null && permDelete) Database.emptyRecycleBin(new List<Id> (new Map<Id,SObject>(records).keySet()));
     }
 
@@ -166,8 +168,8 @@ global without sharing class JobSequenceUtilities {
             List<SObject> castRecords = (List<SObject>) Type.forName(listType).newInstance();
             castRecords.addAll(records);
             List<Database.UpsertResult> results;
-            if (extId == null) results = Database.upsert(castRecords);
-            if (extId != null) results = Database.upsert(castRecords, extId);
+            if (extId == null) results = Database.upsert(castRecords, true, AccessLevel.SYSTEM_MODE);
+            if (extId != null) results = Database.upsert(castRecords, extId, true, AccessLevel.SYSTEM_MODE);
 
             records = castRecords;
         }
@@ -217,7 +219,7 @@ global without sharing class JobSequenceUtilities {
                 JobName__c = currentJob,
                 JobFrequency__c = jobFrequency
         );
-        insert jse;
+        insert as system jse;
     }
 
     /**
@@ -308,13 +310,15 @@ global without sharing class JobSequenceUtilities {
 
     /**
      * @description This function will setup a scheduled run based on the class name passed and the schedule base don the cron string passed
+     * The run is skipped when a scheduled job with the class name already exists.
      *
      * @param className     The name of the scheduled class to run
      * @param cronString    The cron schedule as a string
      */
     global static void setupScheduledRun(String className, String cronString) {
-        List<AsyncApexJob> aajs =[SELECT ApexClassId FROM AsyncApexJob WHERE ApexClass.Name = :className AND (Status = 'Processing') ORDER BY CreatedDate DESC];
-        try {if (aajs.isEmpty()) System.schedule(className, cronString, (Schedulable) Type.forName(className).newInstance());} catch (Exception e) {System.debug(LoggingLevel.Error, '*** e: ' + e);}
+        //Scheduled jobs are tracked in CronTrigger (named after the class), not AsyncApexJob
+        List<CronTrigger> existing = [SELECT Id FROM CronTrigger WHERE CronJobDetail.Name = :className WITH SYSTEM_MODE];
+        try {if (existing.isEmpty()) System.schedule(className, cronString, (Schedulable) Type.forName(className).newInstance());} catch (Exception e) {System.debug(LoggingLevel.Error, '*** e: ' + e);}
 
     }
 

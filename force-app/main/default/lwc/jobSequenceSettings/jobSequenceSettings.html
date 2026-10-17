@@ -1,0 +1,83 @@
+<template>
+    <lightning-card title="Job Sequencer Settings" icon-name="custom:custom67">
+        <div class="slds-p-horizontal_medium">
+            <template lwc:if={isLoading}>
+                <lightning-spinner alternative-text="Loading settings" size="small"></lightning-spinner>
+            </template>
+
+            <template lwc:if={loadError}>
+                <div class="slds-notify slds-notify_alert slds-alert_error" role="alert">
+                    <h2>The settings could not be loaded: {loadError}</h2>
+                </div>
+            </template>
+
+            <template lwc:if={isReady}>
+                <p class="slds-m-bottom_medium">
+                    These org-wide defaults apply to every job sequence.
+                </p>
+
+                <template lwc:if={showDisabledWarning}>
+                    <div class="slds-notify slds-notify_alert slds-alert_warning slds-m-bottom_medium" role="status">
+                        <h2>
+                            The job sequencer is turned off. Scheduled runs still start, but no sequence jobs are
+                            executed until it is turned back on.
+                        </h2>
+                    </div>
+                </template>
+
+                <lightning-input
+                    type="toggle"
+                    label="Enabled"
+                    checked={enabled}
+                    message-toggle-active="On"
+                    message-toggle-inactive="Off"
+                    field-level-help="If this is on, the job sequencer runs. If you have a runaway queueable job sequence, turn it off and let the jobs clear out so the cause can be resolved."
+                    onchange={handleEnabledChange}
+                    class="slds-m-bottom_medium"
+                ></lightning-input>
+
+                <lightning-input
+                    type="number"
+                    label="Max Retries"
+                    data-field="maxRetries"
+                    value={maxRetries}
+                    min="0"
+                    max={maxRetriesLimit}
+                    step="1"
+                    required
+                    field-level-help="How many times a job is rescheduled when not enough batch jobs are available."
+                    onchange={handleNumberChange}
+                    class="slds-m-bottom_small"
+                ></lightning-input>
+
+                <lightning-input
+                    type="number"
+                    label="Minutes Until Retry"
+                    data-field="minutesUntilRetry"
+                    value={minutesUntilRetry}
+                    min="1"
+                    max={minutesUntilRetryLimit}
+                    step="1"
+                    required
+                    field-level-help="How many minutes elapse between retry attempts."
+                    onchange={handleNumberChange}
+                ></lightning-input>
+            </template>
+        </div>
+
+        <div slot="footer">
+            <lightning-button
+                label="Cancel"
+                onclick={handleCancel}
+                disabled={isPristine}
+            ></lightning-button>
+            <lightning-button
+                variant="brand"
+                label="Save"
+                onclick={handleSave}
+                disabled={isSaveDisabled}
+                class="slds-m-left_x-small"
+            ></lightning-button>
+        </div>
+    </lightning-card>
+</template>

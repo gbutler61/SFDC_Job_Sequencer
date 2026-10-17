@@ -24,6 +24,7 @@
  *   |  10/26/2019 |  Jason Hardy      | Initial Creation (original author)                      |
  *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
+ *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
  *
  */
 global without sharing class JobSequenceExe {
@@ -78,7 +79,7 @@ global without sharing class JobSequenceExe {
      * @param js    The Job Sequence object wrapper to process
      */
     global static void executeQueueable(JobSequence js) {
-        executeQueueable(js, String.isNotBlank(js.query) ? Database.query(js.query) : null);
+        executeQueueable(js, String.isNotBlank(js.query) ? Database.query(js.query, AccessLevel.SYSTEM_MODE) : null);
     }
 
     /**
@@ -94,7 +95,7 @@ global without sharing class JobSequenceExe {
             if (js != null) {
                 if (handler == null) handler = getHandler(js);
                 if (handler != null && String.isNotBlank(js.jobType)) {
-                    scope = String.isNotBlank(js.query) && (scope == null || scope.isEmpty()) ? Database.query(js.query) : scope;
+                    scope = String.isNotBlank(js.query) && (scope == null || scope.isEmpty()) ? Database.query(js.query, AccessLevel.SYSTEM_MODE) : scope;
                     if (js.jobType.equalsIgnoreCase('DML')) handler.executeDML(js, scope);
                     if (js.jobType.equalsIgnoreCase('Function')) handler.executeFunction(js, scope);
                     handler.finishJobSequence(js);

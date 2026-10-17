@@ -1,0 +1,47 @@
+/* Side by side: the menu and the guide fill the visible area and scroll independently.
+   7.5rem leaves room for the Lightning header, app navigation bar and page padding. */
+@media (min-width: 48em) {
+    .help-layout {
+        height: calc(100vh - 7.5rem);
+        flex-wrap: nowrap;
+    }
+
+    .help-column {
+        height: 100%;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+}
+
+.help-section {
+    padding-bottom: 1.25rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--slds-g-color-border-1, #e5e5e5);
+    scroll-margin-top: 0.75rem;
+}
+
+.help-section_last {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.help-anchor {
+    scroll-margin-top: 0.75rem;
+}
+
+.code-block {
+    font-family: Consolas, Monaco, 'Courier New', monospace;
+    font-size: 0.8125rem;
+    background: var(--slds-g-color-surface-container-2, #f3f3f3);
+    color: var(--slds-g-color-on-surface-3, #181818);
+    border: 1px solid var(--slds-g-color-border-1, #e5e5e5);
+    border-radius: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    margin: 0.5rem 0;
+    overflow-x: auto;
+}
+
+.code-line {
+    display: block;
+    white-space: pre;
+}

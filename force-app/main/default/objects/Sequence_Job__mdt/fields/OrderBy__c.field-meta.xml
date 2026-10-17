@@ -4,7 +4,7 @@
     <defaultValue>&#39;CreatedDate DESC&#39;</defaultValue>
     <externalId>false</externalId>
     <fieldManageability>SubscriberControlled</fieldManageability>
-    <inlineHelpText>What field(s) should the query be ordered by? DO NOT include the ORDER BY keyword; however, you will need to include DESC or ASC as applicable</inlineHelpText>
+    <inlineHelpText>Optional. The field(s) to sort by, e.g. CreatedDate DESC, Name. DO NOT include the ORDER BY keyword; ASC is the default. Sorting batch records by a parent (e.g. AccountId) reduces row lock errors.</inlineHelpText>
     <label>Query - OrderBy</label>
     <length>100</length>
     <required>false</required>

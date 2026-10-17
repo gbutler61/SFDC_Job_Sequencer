@@ -1,0 +1,81 @@
+:host {
+    display: block;
+    /* Categorical slot 1, validated against the light surface (dataviz palette) */
+    --jsc-bar: #2a78d6;
+    --jsc-grid: var(--slds-g-color-border-1, #e5e5e5);
+    --jsc-axis-text: var(--slds-g-color-on-surface-1, #5c5c5c);
+}
+
+.panel {
+    border: 1px solid var(--slds-g-color-border-1, #e5e5e5);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    height: 100%;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chart {
+    position: relative;
+    margin-top: 0.5rem;
+}
+
+.chart-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+}
+
+.gridline {
+    stroke: var(--jsc-grid);
+    stroke-width: 1;
+}
+
+.baseline {
+    stroke: var(--slds-g-color-border-2, #c9c9c9);
+    stroke-width: 1;
+}
+
+.axis-text {
+    fill: var(--jsc-axis-text);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+.bar {
+    fill: var(--jsc-bar);
+}
+
+.hit {
+    fill: transparent;
+    outline: none;
+}
+
+.hit:focus-visible {
+    stroke: var(--jsc-bar);
+    stroke-width: 1.5;
+}
+
+.tooltip {
+    position: absolute;
+    transform: translate(-50%, calc(-100% - 8px));
+    pointer-events: none;
+    background: var(--slds-g-color-surface-inverse-1, #03234d);
+    color: var(--slds-g-color-on-surface-inverse-1, #ffffff);
+    border-radius: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    display: flex;
+    flex-direction: column;
+}
+
+.tooltip-value {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}

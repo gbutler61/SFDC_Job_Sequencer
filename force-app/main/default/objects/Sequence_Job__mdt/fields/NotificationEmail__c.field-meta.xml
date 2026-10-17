@@ -3,7 +3,7 @@
     <fullName>NotificationEmail__c</fullName>
     <externalId>false</externalId>
     <fieldManageability>SubscriberControlled</fieldManageability>
-    <inlineHelpText>What is the email address that should be used in case of job failure?</inlineHelpText>
+    <inlineHelpText>Error emails always go to the user who scheduled the job. Enter an address here to send them to it as well.</inlineHelpText>
     <label>Job Notification Email</label>
     <required>false</required>
     <type>Email</type>

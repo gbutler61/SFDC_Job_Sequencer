@@ -43,8 +43,8 @@
 
             <template lwc:if={hasRows}>
                 <p class="slds-m-bottom_small slds-text-color_weak">
-                    Each frequency runs its active sequence jobs in order. Errors are counted for the last
-                    {errorLookbackDays} days.
+                    Each frequency runs its active sequence jobs in order, and a run is skipped while the previous
+                    run of the same frequency is still going. Errors are counted for the last {errorLookbackDays} days.
                 </p>
                 <table class="slds-table slds-table_bordered slds-table_cell-buffer" aria-label="Job sequence schedules">
                     <thead>
@@ -62,8 +62,11 @@
                         <template for:each={rows} for:item="row">
                             <tr key={row.frequency}>
                                 <th scope="row">{row.frequency}</th>
-                                <td>
+                                <td class="slds-cell-wrap">
                                     <lightning-badge label={row.statusLabel} class={row.statusClass}></lightning-badge>
+                                    <template lwc:if={row.statusDetail}>
+                                        <p class="slds-text-body_small slds-text-color_weak slds-m-top_xx-small">{row.statusDetail}</p>
+                                    </template>
                                 </td>
                                 <td>
                                     <template lwc:if={row.nextFireTime}>
@@ -106,19 +109,19 @@
                                 </td>
                                 <td>
                                     <lightning-button-group>
+                                        <template lwc:if={row.showSchedule}>
+                                            <lightning-button
+                                                label="Schedule"
+                                                data-frequency={row.frequency}
+                                                onclick={handleSchedule}
+                                                disabled={isBusy}
+                                            ></lightning-button>
+                                        </template>
                                         <template lwc:if={row.isScheduled}>
                                             <lightning-button
                                                 label="Unschedule"
                                                 data-frequency={row.frequency}
                                                 onclick={handleUnschedule}
-                                                disabled={isBusy}
-                                            ></lightning-button>
-                                        </template>
-                                        <template lwc:else>
-                                            <lightning-button
-                                                label="Schedule"
-                                                data-frequency={row.frequency}
-                                                onclick={handleSchedule}
                                                 disabled={isBusy}
                                             ></lightning-button>
                                         </template>

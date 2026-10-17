@@ -4,7 +4,7 @@
     <defaultValue>&#39;Id &lt;&gt; null&#39;</defaultValue>
     <externalId>false</externalId>
     <fieldManageability>SubscriberControlled</fieldManageability>
-    <inlineHelpText>What are the conditions that will be used to filter the result set? DO NOT include the WHERE keyword</inlineHelpText>
+    <inlineHelpText>The conditions that select the records. DO NOT include the WHERE keyword. Can use {0} (filled from the test parameters), :DateTimeVar (set from a DateTimeVar parameter) and {!Settings.Field__c} tokens.</inlineHelpText>
     <label>Query - Where</label>
     <length>20000</length>
     <type>LongTextArea</type>

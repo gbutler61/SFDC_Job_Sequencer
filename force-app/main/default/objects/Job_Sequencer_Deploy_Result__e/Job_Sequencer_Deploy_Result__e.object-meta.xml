@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <deploymentStatus>Deployed</deploymentStatus>
+    <description>Published when a Sequence Job save (an Apex metadata deployment) finishes, so the Sequence Jobs tab can show the result.</description>
+    <eventType>HighVolume</eventType>
+    <label>Job Sequencer Deploy Result</label>
+    <pluralLabel>Job Sequencer Deploy Results</pluralLabel>
+    <publishBehavior>PublishImmediately</publishBehavior>
+</CustomObject>

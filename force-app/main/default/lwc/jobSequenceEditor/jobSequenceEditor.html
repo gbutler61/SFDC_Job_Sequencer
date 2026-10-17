@@ -1,0 +1,364 @@
+<template>
+    <lightning-modal-header label={title}></lightning-modal-header>
+    <lightning-modal-body>
+        <template lwc:if={isSaving}>
+            <lightning-spinner alternative-text="Saving" size="medium"></lightning-spinner>
+            <div class="slds-notify slds-notify_alert slds-alert_offline slds-m-bottom_small" role="status">
+                <h2>Saving&hellip; Custom metadata saves run in the background and usually take 10 to 30 seconds.</h2>
+            </div>
+        </template>
+
+        <template lwc:if={errorLines}>
+            <div class="slds-box slds-theme_error slds-m-bottom_medium" role="alert">
+                <p class="slds-text-heading_small slds-m-bottom_x-small">The Sequence Job was not saved</p>
+                <ul class="slds-list_dotted">
+                    <template for:each={errorLines} for:item="line">
+                        <li key={line}>{line}</li>
+                    </template>
+                </ul>
+            </div>
+        </template>
+
+        <h3 class="slds-text-heading_small slds-m-bottom_small">Information</h3>
+        <div class="slds-grid slds-wrap slds-gutters_small">
+            <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2">
+                <lightning-input label="Label" data-field="label" value={form.label} max-length="40" required onchange={handleChange}></lightning-input>
+                <div class="slds-grid slds-wrap slds-gutters_x-small slds-m-top_x-small">
+                    <div class="slds-col slds-size_1-of-1 slds-small-size_4-of-12">
+                        <lightning-combobox label="Job Frequency" data-field="frequency" value={form.frequency} options={frequencyComboOptions} onchange={handleChange}></lightning-combobox>
+                    </div>
+                    <div class="slds-col slds-size_1-of-3 slds-small-size_2-of-12">
+                        <lightning-input label="Order" data-field="order" value={form.order} max-length="5" field-level-help="Run order within the frequency, e.g. D01 for daily job one." onchange={handleChange}></lightning-input>
+                    </div>
+                    <div class="slds-col slds-size_1-of-3 slds-small-size_2-of-12 slds-p-top_large">
+                        <lightning-input type="checkbox" label="Active" data-field="active" checked={form.active} onchange={handleChange}></lightning-input>
+                    </div>
+                    <div class="slds-col slds-size_1-of-3 slds-small-size_2-of-12 slds-p-top_large">
+                        <lightning-input
+                            type="checkbox"
+                            label="Batch Job"
+                            data-field="isBatchJob"
+                            checked={form.isBatchJob}
+                            field-level-help="Checked: runs in Batch Apex against the query (Select, From and Where are required). Unchecked: runs once in Queueable Apex; the query is optional."
+                            onchange={handleChange}
+                        ></lightning-input>
+                    </div>
+                    <template lwc:if={form.isBatchJob}>
+                        <div class="slds-col slds-size_1-of-2 slds-small-size_2-of-12">
+                            <lightning-input type="number" label="Batch Size" data-field="batchLimit" value={form.batchLimit} min="1" max="200" step="1" field-level-help="How many records each batch processes, from 1 to 200. Blank means 200." onchange={handleChange}></lightning-input>
+                        </div>
+                    </template>
+                </div>
+            </div>
+            <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2">
+                <lightning-input
+                    label="Sequence Job Name"
+                    data-field="developerName"
+                    value={form.developerName}
+                    max-length="40"
+                    required
+                    disabled={isDeveloperNameLocked}
+                    field-level-help="The API name. It must be unique and can't be changed after the job is created."
+                    onchange={handleChange}
+                ></lightning-input>
+                <lightning-input type="email" label="Job Notification Email" data-field="notificationEmail" value={form.notificationEmail} field-level-help="Error emails always go to the user who scheduled the job. Enter an address here to send them to it as well." onchange={handleChange} class="slds-m-top_x-small"></lightning-input>
+            </div>
+        </div>
+
+        <h3 class="slds-text-heading_small slds-m-top_medium slds-m-bottom_small">Job details</h3>
+        <div class="slds-grid slds-wrap slds-gutters_small">
+            <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
+                <lightning-combobox
+                    label="Handler Class"
+                    data-field="handlerClass"
+                    value={form.handlerClass}
+                    options={handlerComboOptions}
+                    required
+                    field-level-help="The class that runs this job. The list shows every class in this org that implements JobSequenceInterface."
+                    onchange={handleChange}
+                ></lightning-combobox>
+            </div>
+            <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
+                <lightning-combobox label="Job Type" data-field="jobType" value={form.jobType} options={jobTypeComboOptions} required onchange={handleChange}></lightning-combobox>
+            </div>
+            <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
+                <template lwc:if={isDml}>
+                    <lightning-combobox
+                        label="Job Execution DML Type"
+                        data-field="executionJob"
+                        value={form.executionJob}
+                        options={dmlOptions}
+                        required
+                        onchange={handleChange}
+                    ></lightning-combobox>
+                </template>
+                <template lwc:elseif={hasFunctionList}>
+                    <lightning-combobox
+                        label="Function Name"
+                        value={form.executionJob}
+                        options={functionComboOptions}
+                        required
+                        field-level-help="The functions this handler lists. Choose Other to type a name it handles but doesn't list."
+                        onchange={handleFunctionSelect}
+                    ></lightning-combobox>
+                </template>
+                <template lwc:else>
+                    <lightning-input
+                        label="Function Name"
+                        data-field="executionJob"
+                        value={form.executionJob}
+                        max-length="80"
+                        required
+                        field-level-help="Must be handled by the executeFunction method of the handler class, e.g. FieldShift."
+                        onchange={handleChange}
+                    ></lightning-input>
+                </template>
+                <div class="slds-m-top_x-small">
+                    <template lwc:if={isDelete}>
+                        <lightning-input type="checkbox" label="Permanent Delete" data-field="permDelete" checked={form.permDelete} field-level-help="Also empty the deleted records from the recycle bin." onchange={handleChange}></lightning-input>
+                    </template>
+                    <lightning-input type="checkbox" label="All or None" data-field="allOrNone" checked={form.allOrNone} field-level-help={allOrNoneHelp} onchange={handleChange}></lightning-input>
+                </div>
+            </div>
+            <!-- Upsert External Id Field is hidden for now: the Sequence Job validation rules allow only UPDATE and DELETE.
+                 Any stored value is kept when the job is saved.
+            <div class="slds-col slds-size_1-of-2 slds-medium-size_1-of-4">
+                <lightning-input label="Upsert External Id Field" data-field="upsertExtIdField" value={form.upsertExtIdField} max-length="80" onchange={handleChange}></lightning-input>
+            </div>
+            -->
+        </div>
+
+        <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-m-top_medium slds-m-bottom_small">
+            <h3 class="slds-text-heading_small">Query</h3>
+            <lightning-button variant="base" label={pasteToggleLabel} icon-name="utility:paste" onclick={handleTogglePaste}></lightning-button>
+        </div>
+        <template lwc:if={showPasteQuery}>
+            <div class="paste-box slds-m-bottom_small">
+                <lightning-textarea
+                    label="Paste a working SOQL query"
+                    value={pastedQuery}
+                    placeholder="SELECT Id, Name FROM Account WHERE CreatedDate = LAST_N_DAYS:7 ORDER BY CreatedDate DESC LIMIT 100"
+                    field-level-help="For example from IntelliJ's SOQL query window or Salesforce Inspector. It is split into From, Select, Where, Order By and Record Limit, replacing what is there now."
+                    onchange={handlePastedQueryChange}
+                    class="code-input"
+                ></lightning-textarea>
+                <template lwc:if={pasteError}>
+                    <p class="slds-text-color_error slds-text-body_small slds-m-top_xx-small">{pasteError}</p>
+                </template>
+                <div class="slds-m-top_x-small">
+                    <lightning-button variant="brand-outline" label="Parse into fields" onclick={handleParseQuery}></lightning-button>
+                    <lightning-button label="Cancel" onclick={handleTogglePaste} class="slds-m-left_x-small"></lightning-button>
+                </div>
+            </div>
+        </template>
+        <template lwc:if={pasteNotes}>
+            <div class="slds-box slds-box_x-small slds-theme_shade slds-m-bottom_small" role="status">
+                <template for:each={pasteNotes} for:item="note">
+                    <p key={note} class="slds-text-body_small">{note}</p>
+                </template>
+            </div>
+        </template>
+        <div class="slds-grid slds-wrap slds-gutters_small">
+            <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2">
+                <c-job-sequence-search-select
+                    label="Query - From"
+                    placeholder="Search objects"
+                    options={objectOptions}
+                    selected-label={fromLabel}
+                    field-level-help="The object to query. Only objects that exist in this org are listed."
+                    onselect={handleObjectSelect}
+                ></c-job-sequence-search-select>
+                <template lwc:if={form.fromObject}>
+                    <p class="slds-text-body_small slds-text-color_weak slds-m-top_xx-small">API name: {form.fromObject}</p>
+                </template>
+                <template lwc:if={fromMissing}>
+                    <p class="slds-text-color_error slds-text-body_small slds-m-top_xx-small">Choose the object to query.</p>
+                </template>
+            </div>
+            <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2">
+                <lightning-input type="number" label="Query - Record Limit" data-field="recordLimit" value={form.recordLimit} min="1" step="1" onchange={handleChange}></lightning-input>
+            </div>
+
+            <div class="slds-col slds-size_1-of-1 slds-m-top_x-small">
+                <div class="slds-form-element">
+                    <label class="slds-form-element__label" for="select-text">
+                        <template lwc:if={queryRequired}><abbr class="slds-required" title="required">*</abbr></template>Query - Select
+                    </label>
+                    <lightning-helptext content="Do not include SELECT. Click in the box to pick fields from the popup, or type fields, parent fields (e.g. RecordType.DeveloperName) and subqueries directly." class="slds-m-left_xx-small"></lightning-helptext>
+                    <div class="slds-form-element__control">
+                        <textarea
+                            id="select-text"
+                            class={selectTextClass}
+                            rows="3"
+                            maxlength="20000"
+                            data-query-field="selectFields"
+                            onfocus={handleQueryFocus}
+                            onclick={handleQueryCursor}
+                            onkeyup={handleQueryCursor}
+                            onblur={handleQueryBlur}
+                            onkeydown={handleQueryKeyDown}
+                            oninput={handleQueryInput}
+                        ></textarea>
+                    </div>
+                    <template lwc:if={showSelectChooser}>
+                        <div class="chooser-popup" onfocusin={handleChooserFocusIn} onfocusout={handleChooserFocusOut}>
+                            <c-job-sequence-search-select
+                                label={insertLabel}
+                                placeholder={fieldPickerPlaceholder}
+                                options={insertOptions}
+                                exclude-values={insertExcludeValues}
+                                disabled={noObjectChosen}
+                                onselect={handleInsertField}
+                            ></c-job-sequence-search-select>
+                            <p class="slds-text-body_small slds-text-color_weak slds-m-top_xx-small">{chooserHint}</p>
+                        </div>
+                    </template>
+                    <template lwc:if={selectMissing}>
+                        <div class="slds-form-element__help slds-text-color_error">A batch job needs Query - Select.</div>
+                    </template>
+                </div>
+            </div>
+
+            <div class="slds-col slds-size_1-of-1 slds-m-top_x-small">
+                <div class="slds-form-element">
+                    <label class="slds-form-element__label" for="where-text">
+                        <template lwc:if={queryRequired}><abbr class="slds-required" title="required">*</abbr></template>Query - Where
+                    </label>
+                    <lightning-helptext content={whereHelp} class="slds-m-left_xx-small"></lightning-helptext>
+                    <div class="slds-form-element__control">
+                        <textarea
+                            id="where-text"
+                            class={whereTextClass}
+                            rows="3"
+                            maxlength="20000"
+                            data-query-field="whereClause"
+                            onfocus={handleQueryFocus}
+                            onclick={handleQueryCursor}
+                            onkeyup={handleQueryCursor}
+                            onblur={handleQueryBlur}
+                            onkeydown={handleQueryKeyDown}
+                            oninput={handleQueryInput}
+                        ></textarea>
+                    </div>
+                    <template lwc:if={showWhereChooser}>
+                        <div class="chooser-popup" onfocusin={handleChooserFocusIn} onfocusout={handleChooserFocusOut}>
+                            <c-job-sequence-search-select
+                                label={insertLabel}
+                                placeholder={fieldPickerPlaceholder}
+                                options={insertOptions}
+                                exclude-values={insertExcludeValues}
+                                disabled={noObjectChosen}
+                                onselect={handleInsertField}
+                            ></c-job-sequence-search-select>
+                            <p class="slds-text-body_small slds-text-color_weak slds-m-top_xx-small">{chooserHint}</p>
+                        </div>
+                    </template>
+                    <template lwc:if={whereMissing}>
+                        <div class="slds-form-element__help slds-text-color_error">A batch job needs Query - Where.</div>
+                    </template>
+                </div>
+            </div>
+
+            <div class="slds-col slds-size_1-of-1 slds-m-top_x-small">
+                <div class="slds-form-element">
+                    <label class="slds-form-element__label" for="orderby-text">Query - OrderBy (optional)</label>
+                    <lightning-helptext content="Do not include ORDER BY. Added to the query as typed, e.g. CreatedDate DESC, Sequence__c ASC. Sorting batch records by a parent (e.g. AccountId) reduces row lock errors." class="slds-m-left_xx-small"></lightning-helptext>
+                    <div class="slds-form-element__control">
+                        <input
+                            id="orderby-text"
+                            type="text"
+                            class={orderByTextClass}
+                            maxlength="100"
+                            data-query-field="orderBy"
+                            onfocus={handleQueryFocus}
+                            onclick={handleQueryCursor}
+                            onkeyup={handleQueryCursor}
+                            onblur={handleQueryBlur}
+                            onkeydown={handleQueryKeyDown}
+                            oninput={handleQueryInput}
+                        />
+                    </div>
+                    <template lwc:if={showOrderByChooser}>
+                        <div class="chooser-popup" onfocusin={handleChooserFocusIn} onfocusout={handleChooserFocusOut}>
+                            <c-job-sequence-search-select
+                                label={insertLabel}
+                                placeholder={fieldPickerPlaceholder}
+                                options={insertOptions}
+                                exclude-values={insertExcludeValues}
+                                disabled={noObjectChosen}
+                                onselect={handleInsertField}
+                            ></c-job-sequence-search-select>
+                            <p class="slds-text-body_small slds-text-color_weak slds-m-top_xx-small">{chooserHint}</p>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <h3 class="slds-text-heading_small slds-m-top_medium slds-m-bottom_x-small">Job Parameters</h3>
+        <c-job-sequence-parameters-builder
+            parameters={form.parameters}
+            where-clause={form.whereClause}
+            field-options={fieldOptions}
+            is-field-shift={isFieldShift}
+            onparameterschange={handleParametersChange}
+        ></c-job-sequence-parameters-builder>
+
+        <template lwc:if={hasBuiltQuery}>
+            <div class="built-query slds-m-top_small">
+                <h3 class="slds-text-heading_small slds-m-bottom_x-small">Built query</h3>
+                <template lwc:if={builtQuery.errorMessage}>
+                    <p class="slds-text-color_error slds-text-body_small">{builtQuery.errorMessage}</p>
+                </template>
+                <template lwc:if={builtQuery.queryWithVariables}>
+                    <p class="slds-text-body_small slds-text-title_bold">As written, with variables</p>
+                    <pre class="code-block"><code>{builtQuery.queryWithVariables}</code></pre>
+                </template>
+                <template lwc:if={builtQuery.query}>
+                    <p class="slds-text-body_small slds-text-title_bold">{builtRunTitle}</p>
+                    <pre class="code-block"><code>{builtQuery.query}</code></pre>
+                </template>
+                <template lwc:if={builtQuery.note}>
+                    <p class="slds-text-body_small slds-text-color_error">{builtQuery.note}</p>
+                </template>
+            </div>
+        </template>
+
+        <div class="slds-m-top_small">
+            <lightning-button label="Test Query" icon-name="utility:search" onclick={handleTestQuery} disabled={isBusy}></lightning-button>
+            <template lwc:if={hasTestParameters}>
+            <lightning-input
+                type="checkbox"
+                label="Build as if Test.isRunningTest() is true"
+                checked={testAsUnitTest}
+                onchange={handleTestAsUnitTestChange}
+                field-level-help="Checked: uses the Test.isRunningTest parameter values. Unchecked: uses the !Test.isRunningTest values, as scheduled runs do. On by default for Test Only jobs, which only run when Test.isRunningTest() is true."
+                class="slds-m-left_medium test-as-unit"
+            ></lightning-input>
+            </template>
+            <template lwc:if={isTesting}>
+                <span class="slds-m-left_small slds-text-color_weak">Testing&hellip;</span>
+            </template>
+        </div>
+        <template lwc:if={hasQueryResult}>
+            <div class="slds-m-top_small" role="status">
+                <p class={queryResultClass}>{queryResultSummary}</p>
+                <template lwc:if={queryResult.queryHint}>
+                    <p class="slds-text-body_small slds-m-top_xx-small">{queryResult.queryHint}</p>
+                </template>
+
+                <p class="slds-text-color_weak slds-text-body_small">
+                    {queryRunLabel}, including parameters and settings tokens, and checked against this org
+                    ({queryResult.orgName}). No record data is shown.
+                </p>
+            </div>
+        </template>
+    </lightning-modal-body>
+    <lightning-modal-footer>
+        <!-- Build number, hidden for release; uncomment to check for a stale cached editor
+        <span class="build-number">Build {buildNumber}</span>
+        -->
+        <lightning-button label="Cancel" onclick={handleCancel} disabled={isSaving}></lightning-button>
+        <lightning-button variant="brand" label="Save" onclick={handleSave} disabled={isBusy} class="slds-m-left_x-small"></lightning-button>
+    </lightning-modal-footer>
+</template>

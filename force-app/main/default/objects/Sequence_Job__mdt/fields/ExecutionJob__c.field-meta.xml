@@ -4,7 +4,7 @@
     <defaultValue>&#39;UPDATE&#39;</defaultValue>
     <externalId>false</externalId>
     <fieldManageability>SubscriberControlled</fieldManageability>
-    <inlineHelpText>If the type selected was DML, this should be update or delete. Otherwise it should be the name of the function defined in the UtilityJobSequence class.</inlineHelpText>
+    <inlineHelpText>For a DML job: UPDATE or DELETE. For a Function job: the function name, which must be handled by the executeFunction method of the Handler Class (the default handler provides FieldShift).</inlineHelpText>
     <label>Job Execution DML Type or Function Name</label>
     <length>80</length>
     <required>true</required>

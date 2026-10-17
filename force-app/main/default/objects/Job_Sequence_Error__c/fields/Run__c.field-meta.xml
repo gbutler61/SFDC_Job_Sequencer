@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Run__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <description>The Job Sequence Run the error happened in, when known.</description>
+    <externalId>false</externalId>
+    <label>Run</label>
+    <referenceTo>Job_Sequence_Run__c</referenceTo>
+    <relationshipLabel>Errors</relationshipLabel>
+    <relationshipName>Errors</relationshipName>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Lookup</type>
+</CustomField>

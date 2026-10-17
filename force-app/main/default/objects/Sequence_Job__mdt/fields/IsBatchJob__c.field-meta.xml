@@ -4,7 +4,7 @@
     <defaultValue>true</defaultValue>
     <externalId>false</externalId>
     <fieldManageability>SubscriberControlled</fieldManageability>
-    <inlineHelpText>Should this be run in a batch context?</inlineHelpText>
+    <inlineHelpText>Checked: runs in Batch Apex against the query (Select, From and Where are required). Unchecked: runs once in Queueable Apex; the query is optional.</inlineHelpText>
     <label>Batch Job</label>
     <type>Checkbox</type>
 </CustomField>

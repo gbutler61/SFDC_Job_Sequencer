@@ -1,5 +1,5 @@
 /**
- * @description jobSequenceScheduler -- Dashboard for the out of the box frequencies (Hourly through Yearly): shows
+ * @description jobSequenceScheduler -- Dashboard for every frequency (every 5 minutes through yearly): shows
  * whether each is scheduled, its next and last run, active sequence jobs and recent errors, and lets an admin
  * schedule, unschedule or run a frequency now.
  * @author Gary Butler
@@ -14,9 +14,6 @@ import scheduleRun from '@salesforce/apex/JobSequenceSchedulerController.schedul
 import scheduleAllRuns from '@salesforce/apex/JobSequenceSchedulerController.scheduleAllRuns';
 import unscheduleRun from '@salesforce/apex/JobSequenceSchedulerController.unscheduleRun';
 import runNow from '@salesforce/apex/JobSequenceSchedulerController.runNow';
-
-// CronTrigger states that mean the schedule is healthy
-const HEALTHY_STATES = ['WAITING', 'ACQUIRED', 'EXECUTING'];
 
 /**
  * @description Pulls a readable message out of an Apex error.
@@ -52,7 +49,7 @@ export default class JobSequenceScheduler extends NavigationMixin(LightningEleme
     }
 
     get isScheduleAllDisabled() {
-        return this.isBusy || !this.hasRows || this.data.frequencies.every((f) => f.isScheduled);
+        return this.isBusy || !this.hasRows || this.data.frequencies.every((f) => f.isFullyScheduled);
     }
 
     /**
@@ -61,19 +58,30 @@ export default class JobSequenceScheduler extends NavigationMixin(LightningEleme
      */
     get rows() {
         return (this.data?.frequencies || []).map((f) => {
-            const healthy = f.isScheduled && HEALTHY_STATES.includes(f.state);
             let statusLabel = 'Not scheduled';
-            if (f.isScheduled) {
-                statusLabel = healthy ? 'Scheduled' : `Scheduled (${f.state})`;
-            }
             let statusClass = '';
-            if (f.isScheduled) {
-                statusClass = healthy ? 'slds-theme_success' : 'slds-theme_warning';
+            let statusDetail = '';
+            if (f.isScheduled && !f.isFullyScheduled) {
+                statusLabel = `Partly scheduled (${f.scheduleCount} of ${f.expectedScheduleCount})`;
+                statusClass = 'slds-theme_warning';
+                statusDetail = 'Click Schedule to add the missing scheduled jobs.';
+            } else if (f.isScheduled && !f.isHealthy) {
+                statusLabel = `Scheduled (${f.state})`;
+                statusClass = 'slds-theme_warning';
+            } else if (f.isScheduled) {
+                statusLabel = 'Scheduled';
+                statusClass = 'slds-theme_success';
+                if (f.expectedScheduleCount > 1) statusDetail = `${f.scheduleCount} scheduled jobs, one per slot in the hour`;
+            }
+            if (f.isLegacy) {
+                statusDetail = 'Uses the original per-frequency class. Unschedule and schedule again to get skip-if-still-running.';
             }
             return {
                 ...f,
                 statusLabel,
                 statusClass,
+                statusDetail,
+                showSchedule: !f.isFullyScheduled,
                 isRunNowDisabled: this.isBusy || !this.data.sequencerEnabled || !f.activeJobCount
             };
         });

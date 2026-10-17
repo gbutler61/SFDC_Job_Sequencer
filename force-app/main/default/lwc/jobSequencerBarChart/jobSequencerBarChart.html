@@ -1,0 +1,73 @@
+<template>
+    <section class="panel">
+        <div class="panel-header">
+            <h2 class="slds-text-heading_small">{chartTitle}</h2>
+            <lightning-button variant="base" label={toggleLabel} onclick={handleToggle}></lightning-button>
+        </div>
+
+        <template lwc:if={showTable}>
+            <table class="slds-table slds-table_bordered slds-table_cell-buffer slds-m-top_small" aria-label={chartTitle}>
+                <thead>
+                    <tr class="slds-line-height_reset">
+                        <th scope="col">Day</th>
+                        <th scope="col">Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template for:each={chart.bars} for:item="bar">
+                        <tr key={bar.key}>
+                            <th scope="row">{bar.label}</th>
+                            <td>{bar.valueText}</td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </template>
+        <template lwc:else>
+            <div class="chart">
+                <svg viewBox="0 0 640 210" class="chart-svg" role="img" aria-label={ariaLabel}>
+                    <template for:each={chart.ticks} for:item="tick">
+                        <g key={tick.key}>
+                            <line class="gridline" x1={chart.plotLeft} x2={chart.plotRight} y1={tick.y} y2={tick.y}></line>
+                            <text class="axis-text" x={chart.tickLabelX} y={tick.labelY} text-anchor="end">{tick.label}</text>
+                        </g>
+                    </template>
+                    <template for:each={chart.bars} for:item="bar">
+                        <g key={bar.key}>
+                            <template lwc:if={bar.hasBar}>
+                                <path class="bar" d={bar.path}></path>
+                            </template>
+                            <template lwc:if={bar.showAxisLabel}>
+                                <text class="axis-text" x={bar.centerX} y={chart.axisLabelY} text-anchor="middle">{bar.axisLabel}</text>
+                            </template>
+                            <rect
+                                class="hit"
+                                x={bar.hitX}
+                                y={chart.plotTop}
+                                width={bar.hitWidth}
+                                height={chart.plotHeight}
+                                data-index={bar.index}
+                                tabindex="0"
+                                aria-label={bar.ariaLabel}
+                                onmouseenter={handleBarEnter}
+                                onfocus={handleBarEnter}
+                                onmouseleave={handleBarLeave}
+                                onblur={handleBarLeave}
+                            ></rect>
+                        </g>
+                    </template>
+                    <line class="baseline" x1={chart.plotLeft} x2={chart.plotRight} y1={chart.baselineY} y2={chart.baselineY}></line>
+                </svg>
+                <template lwc:if={activeBar}>
+                    <div class="tooltip" style={tooltipStyle} role="status">
+                        <span>{activeBar.label}</span>
+                        <span class="tooltip-value">{activeBar.valueText}</span>
+                    </div>
+                </template>
+            </div>
+            <template lwc:if={isEmpty}>
+                <p class="slds-text-color_weak slds-m-top_x-small">{emptyMessage}</p>
+            </template>
+        </template>
+    </section>
+</template>

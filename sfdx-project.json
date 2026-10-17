@@ -1,8 +1,8 @@
 {
   "packageDirectories": [
     {
-      "versionName": "ver 1.1",
-      "versionNumber": "1.1.0.NEXT",
+      "versionName": "ver 1.2",
+      "versionNumber": "1.2.0.NEXT",
       "path": "force-app",
       "default": true,
       "package": "Job Sequencer",
@@ -16,6 +16,7 @@
   "packageAliases": {
     "Job Sequencer": "0HojV0000001HYHSA2",
     "Job Sequencer@1.0.0-3": "04tjV000000AkETQA0",
-    "Job Sequencer@1.1.0-1": "04tjV000000AkO9QAK"
+    "Job Sequencer@1.1.0-1": "04tjV000000AkO9QAK",
+    "Job Sequencer@1.2.0-1": "04tjV000000AlC9QAK"
   }
 }

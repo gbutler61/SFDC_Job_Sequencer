@@ -1,0 +1,286 @@
+<template>
+    <lightning-card title="Job Sequencer" icon-name="standard:scheduling_constraint">
+        <div slot="actions">
+            <lightning-button-icon
+                icon-name="utility:refresh"
+                alternative-text="Refresh"
+                title="Refresh"
+                onclick={handleRefresh}
+                disabled={isLoading}
+            ></lightning-button-icon>
+        </div>
+
+        <div class="slds-p-horizontal_medium">
+            <template lwc:if={isLoading}>
+                <lightning-spinner alternative-text="Loading" size="small"></lightning-spinner>
+            </template>
+
+            <template lwc:if={loadError}>
+                <div class="slds-notify slds-notify_alert slds-alert_error" role="alert">
+                    <h2>The home page data could not be loaded: {loadError}</h2>
+                </div>
+            </template>
+
+            <template lwc:if={hasData}>
+                <template lwc:if={data.cleanupNotScheduled}>
+                    <div class="slds-notify slds-notify_alert slds-alert_warning slds-m-bottom_medium" role="status">
+                        <h2>
+                            The daily cleanup jobs (JOBSEQ_PURGE_RUNS and JOBSEQ_PURGE_ERRORS) won't run until the Daily
+                            frequency is scheduled, so run and error history will keep growing.
+                            <lightning-button variant="base" label="Open the Scheduler" data-tab="Job_Sequence_Scheduler" onclick={handleOpenTab} class="slds-m-left_x-small"></lightning-button>
+                        </h2>
+                    </div>
+                </template>
+
+                <!-- Tiles -->
+                <div class="tiles">
+                    <div class="tile">
+                        <p class="tile-label">Sequencer</p>
+                        <p class="tile-value">
+                            <lightning-icon icon-name={sequencerIcon} variant={sequencerIconVariant} size="small" alternative-text="" class="slds-m-right_x-small"></lightning-icon>
+                            {sequencerLabel}
+                        </p>
+                        <p class="tile-detail">{sequencerDetail}</p>
+                        <lightning-button variant="base" label="Settings" data-tab="Job_Sequencer_Settings" onclick={handleOpenTab}></lightning-button>
+                    </div>
+
+                    <div class="tile">
+                        <p class="tile-label">Scheduled frequencies</p>
+                        <p class="tile-value">{scheduledLabel}</p>
+                        <p class="tile-detail">Every 5 minutes through yearly</p>
+                        <lightning-button variant="base" label="Scheduler" data-tab="Job_Sequence_Scheduler" onclick={handleOpenTab}></lightning-button>
+                    </div>
+
+                    <div class="tile">
+                        <p class="tile-label">Next run</p>
+                        <template lwc:if={hasNextRun}>
+                            <p class="tile-value tile-value_small">
+                                <lightning-formatted-date-time value={data.nextRunTime} month="short" day="numeric" hour="numeric" minute="2-digit"></lightning-formatted-date-time>
+                            </p>
+                            <p class="tile-detail">{data.nextRunFrequency}</p>
+                        </template>
+                        <template lwc:else>
+                            <p class="tile-value tile-value_small">None</p>
+                            <p class="tile-detail">Nothing is scheduled</p>
+                        </template>
+                    </div>
+
+                    <div class="tile">
+                        <p class="tile-label">Active sequence jobs</p>
+                        <p class="tile-value">{data.activeJobCount}</p>
+                        <p class="tile-detail">Across all frequencies</p>
+                        <lightning-button variant="base" label="Sequence Jobs" data-tab="Job_Sequence_Manager" onclick={handleOpenTab}></lightning-button>
+                    </div>
+
+                    <div class="tile">
+                        <p class="tile-label">Errors, last 7 days</p>
+                        <p class="tile-value">{data.errorsLast7Days}</p>
+                        <p class="tile-detail">{errorTrendDetail}</p>
+                        <lightning-button variant="base" label="Errors" onclick={handleOpenErrors}></lightning-button>
+                    </div>
+                </div>
+
+                <!-- Charts -->
+                <div class="slds-grid slds-wrap slds-gutters_small slds-m-top_medium">
+                    <div class="slds-col slds-size_1-of-1 slds-large-size_1-of-2 slds-m-bottom_small">
+                        <c-job-sequencer-bar-chart
+                            chart-title="Records processed per day, last 14 days"
+                            days={data.recordsByDay}
+                            unit-singular="record"
+                            unit-plural="records"
+                            empty-message="No records processed in the last 14 days."
+                        ></c-job-sequencer-bar-chart>
+                    </div>
+                    <div class="slds-col slds-size_1-of-1 slds-large-size_1-of-2 slds-m-bottom_small">
+                        <c-job-sequencer-bar-chart
+                            chart-title="Errors per day, last 14 days"
+                            days={data.errorsByDay}
+                            unit-singular="error"
+                            unit-plural="errors"
+                            empty-message="No errors in the last 14 days."
+                        ></c-job-sequencer-bar-chart>
+                    </div>
+                </div>
+
+                <!-- Performance -->
+                <div class="slds-grid slds-wrap slds-gutters_small slds-m-top_small">
+                    <div class="slds-col slds-size_1-of-1 slds-large-size_7-of-12 slds-m-bottom_small">
+                        <section class="panel">
+                            <div class="panel-header">
+                                <h2 class="slds-text-heading_small">Frequency performance, last 7 days</h2>
+                            </div>
+                            <template lwc:if={hasFrequencyStats}>
+                                <table class="slds-table slds-table_bordered slds-table_cell-buffer slds-m-top_small" aria-label="Frequency performance">
+                                    <thead>
+                                        <tr class="slds-line-height_reset">
+                                            <th scope="col">Frequency</th>
+                                            <th scope="col">Runs</th>
+                                            <th scope="col">Avg duration</th>
+                                            <th scope="col">Longest</th>
+                                            <th scope="col">Records</th>
+                                            <th scope="col">Failed</th>
+                                            <th scope="col">Times skipped</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template for:each={frequencyStats} for:item="fs">
+                                            <tr key={fs.frequency}>
+                                                <th scope="row">{fs.frequency}</th>
+                                                <td>{fs.runs}</td>
+                                                <td>{fs.averageLabel}</td>
+                                                <td>{fs.maxLabel}</td>
+                                                <td>{fs.recordsLabel}</td>
+                                                <td>{fs.failedLabel}</td>
+                                                <td class={fs.skippedClass}>{fs.timesSkipped}</td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                                <p class="slds-text-color_weak slds-text-body_small slds-m-top_x-small">
+                                    Times skipped counts scheduled runs that didn't start because the previous run was still going. A
+                                    high number means the frequency is set more often than its jobs can finish.
+                                </p>
+                            </template>
+                            <template lwc:else>
+                                <p class="slds-text-color_weak slds-m-top_small">No runs in the last 7 days.</p>
+                            </template>
+                        </section>
+                    </div>
+                    <div class="slds-col slds-size_1-of-1 slds-large-size_5-of-12 slds-m-bottom_small">
+                        <section class="panel">
+                            <div class="panel-header">
+                                <h2 class="slds-text-heading_small">Slowest jobs, last 30 days</h2>
+                            </div>
+                            <template lwc:if={hasSlowestJobs}>
+                                <table class="slds-table slds-table_bordered slds-table_cell-buffer slds-m-top_small" aria-label="Slowest jobs">
+                                    <thead>
+                                        <tr class="slds-line-height_reset">
+                                            <th scope="col">Sequence job</th>
+                                            <th scope="col">Avg duration</th>
+                                            <th scope="col">Runs</th>
+                                            <th scope="col">Records</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template for:each={slowestJobs} for:item="job">
+                                            <tr key={job.jobName}>
+                                                <th scope="row" class="slds-cell-wrap">{job.jobName}</th>
+                                                <td>{job.averageLabel}</td>
+                                                <td>{job.runs}</td>
+                                                <td>{job.recordsLabel}</td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </template>
+                            <template lwc:else>
+                                <p class="slds-text-color_weak slds-m-top_small">No job steps recorded in the last 30 days.</p>
+                            </template>
+                        </section>
+                    </div>
+                </div>
+
+                <div class="slds-grid slds-wrap slds-gutters_small slds-m-top_small">
+                    <!-- Recent runs -->
+                    <div class="slds-col slds-size_1-of-1 slds-large-size_7-of-12 slds-m-bottom_small">
+                        <section class="panel">
+                            <div class="panel-header">
+                                <h2 class="slds-text-heading_small">Recent runs</h2>
+                                <lightning-button variant="base" label="View all" onclick={handleOpenRuns}></lightning-button>
+                            </div>
+                            <template lwc:if={hasRecentRuns}>
+                                <table class="slds-table slds-table_bordered slds-table_cell-buffer slds-m-top_small" aria-label="Recent runs">
+                                    <thead>
+                                        <tr class="slds-line-height_reset">
+                                            <th scope="col">Run</th>
+                                            <th scope="col">Started</th>
+                                            <th scope="col">Frequency</th>
+                                            <th scope="col">Status</th>
+                                            <th scope="col">Duration</th>
+                                            <th scope="col">Jobs</th>
+                                            <th scope="col">Records</th>
+                                            <th scope="col">Skipped</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template for:each={recentRuns} for:item="run">
+                                            <tr key={run.recordId} title={run.detail}>
+                                                <td><a href="#" data-id={run.recordId} onclick={handleOpenRecord}>{run.name}</a></td>
+                                                <td>
+                                                    <lightning-formatted-date-time value={run.startedAt} month="short" day="numeric" hour="numeric" minute="2-digit"></lightning-formatted-date-time>
+                                                </td>
+                                                <td>{run.frequency}</td>
+                                                <td><lightning-badge label={run.status} class={run.statusClass}></lightning-badge></td>
+                                                <td>{run.durationLabel}</td>
+                                                <td>{run.jobsRun}</td>
+                                                <td>{run.recordsLabel}</td>
+                                                <td>{run.timesSkipped}</td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </template>
+                            <template lwc:else>
+                                <p class="slds-text-color_weak slds-m-top_small">No runs yet. Runs started from the Job Sequence Scheduler appear here.</p>
+                            </template>
+                        </section>
+                    </div>
+
+                    <!-- Recent errors and top failing jobs -->
+                    <div class="slds-col slds-size_1-of-1 slds-large-size_5-of-12 slds-m-bottom_small">
+                        <section class="panel">
+                            <div class="panel-header">
+                                <h2 class="slds-text-heading_small">Most recent errors</h2>
+                                <lightning-button variant="base" label="View all" onclick={handleOpenErrors}></lightning-button>
+                            </div>
+                            <template lwc:if={hasRecentErrors}>
+                                <ul class="slds-has-dividers_bottom-space slds-m-top_x-small">
+                                    <template for:each={data.recentErrors} for:item="error">
+                                        <li key={error.recordId} class="slds-item">
+                                            <a href="#" data-id={error.recordId} onclick={handleOpenRecord}>{error.name}</a>
+                                            <span class="slds-text-color_weak">
+                                                &nbsp;·&nbsp;{error.jobName}&nbsp;·&nbsp;
+                                                <lightning-formatted-date-time value={error.createdDate} month="short" day="numeric" hour="numeric" minute="2-digit"></lightning-formatted-date-time>
+                                            </span>
+                                            <p class="slds-text-body_small exception-preview">{error.exceptionPreview}</p>
+                                        </li>
+                                    </template>
+                                </ul>
+                            </template>
+                            <template lwc:else>
+                                <p class="slds-text-color_weak slds-m-top_small">No errors logged.</p>
+                            </template>
+                        </section>
+
+                        <section class="panel slds-m-top_small">
+                            <div class="panel-header">
+                                <h2 class="slds-text-heading_small">Jobs that fail most, last 30 days</h2>
+                            </div>
+                            <template lwc:if={hasTopFailingJobs}>
+                                <table class="slds-table slds-table_bordered slds-table_cell-buffer slds-m-top_small" aria-label="Jobs that fail most">
+                                    <thead>
+                                        <tr class="slds-line-height_reset">
+                                            <th scope="col">Sequence job</th>
+                                            <th scope="col">Errors</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template for:each={data.topFailingJobs} for:item="job">
+                                            <tr key={job.jobName}>
+                                                <th scope="row" class="slds-cell-wrap">{job.jobName}</th>
+                                                <td>{job.errorCount}</td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </template>
+                            <template lwc:else>
+                                <p class="slds-text-color_weak slds-m-top_small">No failing jobs.</p>
+                            </template>
+                        </section>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+</template>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomApplication xmlns="http://soap.sforce.com/2006/04/metadata">
+    <actionOverrides>
+        <actionName>Tab</actionName>
+        <content>Job_Sequencer_Home</content>
+        <formFactor>Large</formFactor>
+        <skipRecordTypeSelect>false</skipRecordTypeSelect>
+        <type>Flexipage</type>
+        <pageOrSobjectType>standard-home</pageOrSobjectType>
+    </actionOverrides>
+    <brand>
+        <headerColor>#0176D3</headerColor>
+        <shouldOverrideOrgTheme>false</shouldOverrideOrgTheme>
+    </brand>
+    <description>Schedule, run and monitor job sequences. Replaces the Classic Job Sequencer app.</description>
+    <formFactors>Large</formFactors>
+    <isNavAutoTempTabsDisabled>false</isNavAutoTempTabsDisabled>
+    <isNavPersonalizationDisabled>false</isNavPersonalizationDisabled>
+    <isNavTabPersistenceDisabled>false</isNavTabPersistenceDisabled>
+    <label>Job Sequencer</label>
+    <navType>Standard</navType>
+    <tabs>standard-home</tabs>
+    <tabs>Job_Sequence_Scheduler</tabs>
+    <tabs>Job_Sequence_Manager</tabs>
+    <tabs>Job_Sequence_Error__c</tabs>
+    <tabs>Job_Sequencer_Settings</tabs>
+    <tabs>Job_Sequencer_Guide</tabs>
+    <uiType>Lightning</uiType>
+</CustomApplication>

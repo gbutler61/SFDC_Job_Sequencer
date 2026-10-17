@@ -3,7 +3,7 @@
     <fullName>Type__c</fullName>
     <externalId>false</externalId>
     <fieldManageability>SubscriberControlled</fieldManageability>
-    <inlineHelpText>When the job is executed, will it be a DML (Database Markup Language, e.g. a simple update statement) or function (a custom function for more advanced functionality, e.g. triggering a field within the record set)?</inlineHelpText>
+    <inlineHelpText>DML (Data Manipulation Language) runs an UPDATE or DELETE against the queried records. Function runs a named function in the Handler Class, e.g. FieldShift, which sets field values from the Job Parameters.</inlineHelpText>
     <label>Job Type</label>
     <required>true</required>
     <type>Picklist</type>

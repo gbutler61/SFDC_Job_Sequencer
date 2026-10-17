@@ -25,6 +25,7 @@
  *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
  *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
+ *   |  10/16/2026 |  Gary Butler      | Count records processed and failed for run metrics      |
  *
  */
 global without sharing class JobSequenceExe {
@@ -46,6 +47,8 @@ global without sharing class JobSequenceExe {
             if (js == null) throw new JobSequenceException(Label.Job_Sequence_No_Job_Sequence_Object_Found_Error);
         } catch (Exception e) {
             JobSequenceUtilities.logError(js, scope, e);
+            //The whole scope failed
+            if (js != null) js.recordsFailed += scope == null ? 0 : scope.size();
         }
     }
 
@@ -56,18 +59,26 @@ global without sharing class JobSequenceExe {
      * @param scope     The records to process
      */
     global static void executeBatch(JobSequence js, List<SObject> scope) {
+        //Lets errors logged without the job sequence (e.g. by attemptJobSequenceDML) still be tied to this job
+        JobSequenceUtilities.currentJobSequence = js;
         try {
             if (js != null) {
                 if (handler == null) handler = getHandler(js);
                 if (handler != null && String.isNotBlank(js.jobType)) {
+                    //Run metrics: records attempted, and partial-success DML failures reported by the utilities
+                    js.recordsProcessed += scope == null ? 0 : scope.size();
+                    JobSequenceUtilities.dmlFailureCount = 0;
                     if (js.jobType.equalsIgnoreCase('DML')) handler.executeDML(js, scope);
                     if (js.jobType.equalsIgnoreCase('Function')) handler.executeFunction(js, scope);
                     handler.finishJobSequence(js);
+                    js.recordsFailed += JobSequenceUtilities.dmlFailureCount;
                 }
             }
             if (js == null) throw new JobSequenceException(Label.Job_Sequence_No_Job_Sequence_Object_Found_Error);
         } catch (Exception e) {
             JobSequenceUtilities.logError(js, scope, e);
+            //The whole scope failed
+            if (js != null) js.recordsFailed += scope == null ? 0 : scope.size();
         }
     }
 
@@ -91,19 +102,27 @@ global without sharing class JobSequenceExe {
      * @param scope     The records to process
      */
     global static void executeQueueable(JobSequence js, List<SObject> scope) {
+        //Lets errors logged without the job sequence (e.g. by attemptJobSequenceDML) still be tied to this job
+        JobSequenceUtilities.currentJobSequence = js;
         try {
             if (js != null) {
                 if (handler == null) handler = getHandler(js);
                 if (handler != null && String.isNotBlank(js.jobType)) {
                     scope = String.isNotBlank(js.query) && (scope == null || scope.isEmpty()) ? Database.query(js.query, AccessLevel.SYSTEM_MODE) : scope;
+                    //Run metrics: records attempted, and partial-success DML failures reported by the utilities
+                    js.recordsProcessed += scope == null ? 0 : scope.size();
+                    JobSequenceUtilities.dmlFailureCount = 0;
                     if (js.jobType.equalsIgnoreCase('DML')) handler.executeDML(js, scope);
                     if (js.jobType.equalsIgnoreCase('Function')) handler.executeFunction(js, scope);
                     handler.finishJobSequence(js);
+                    js.recordsFailed += JobSequenceUtilities.dmlFailureCount;
                 }
             }
             if (js == null) throw new JobSequenceException(Label.Job_Sequence_No_Job_Sequence_Object_Found_Error);
         } catch (Exception e) {
             JobSequenceUtilities.logError(js, scope, e);
+            //The whole scope failed
+            if (js != null) js.recordsFailed += scope == null ? 0 : scope.size();
         }
     }
 

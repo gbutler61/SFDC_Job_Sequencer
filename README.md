@@ -1,4 +1,4 @@
-> **About this fork:** This is a fork of [coldeagle/SFDC_Job_Sequencer](https://github.com/coldeagle/SFDC_Job_Sequencer), created and copyrighted by Jason Hardy (BSD 3-Clause, see [LICENSE](LICENSE)). It exists solely to change the Sequence Job fields **Job Parameters** (`Parameters__c`), **Query - Select** (`Select__c`) and **Query - Where** (`Where__c`) from Text Area to Long Text Area (20,000 characters), so sequence jobs can hold more complex queries. ApexDoc comments were also added to the classes. Version 1.1.0 adds the Job Sequence Scheduler and Job Sequencer Settings tabs (Lightning Web Components), the Job Sequencer Admin permission set, and the move to API 68.0. The sequencing engine and all other functionality are Jason Hardy's original work.
+> **About this fork:** This is a fork of [coldeagle/SFDC_Job_Sequencer](https://github.com/coldeagle/SFDC_Job_Sequencer), created and copyrighted by Jason Hardy (BSD 3-Clause, see [LICENSE](LICENSE)). It exists solely to change the Sequence Job fields **Job Parameters** (`Parameters__c`), **Query - Select** (`Select__c`) and **Query - Where** (`Where__c`) from Text Area to Long Text Area (20,000 characters), so sequence jobs can hold more complex queries. ApexDoc comments were also added to the classes. Version 1.1.0 added the Job Sequence Scheduler and Job Sequencer Settings tabs (Lightning Web Components), the Job Sequencer Admin permission set, and the move to API 68.0. Version 1.2.0 adds a Lightning app with a metrics home page, the Sequence Jobs tab with a query wizard, sub-hourly frequencies, skipping a run while the previous one is still going, run and per-job metrics, settings tokens, and cleanup jobs that run on the sequencer itself. The sequencing engine and all other functionality are Jason Hardy's original work.
 
 # What is the Job Sequencer
 The tool provides it's users with the ability to schedule jobs on a hourly, daily, weekly, monthly, quarterly or yearly basis. Sequence jobs are created with a frequency based on those Schedules.
@@ -45,13 +45,29 @@ Then when the sequence job is run, all of the opportunities queried would have t
 Developers also have the option of creating additional functions that can be used. More details can be found in the "Job Sequencer Help" tab as well as the code comments of the of the "JobSequenceDefaultHandler" class. 
 
 # Managing the Job Sequencer
-Assign the **Job Sequencer Admin** permission set to anyone who manages the sequencer. It gives access to the Job Sequencer app and these tabs:
+Assign the **Job Sequencer Admin** permission set to anyone who manages the sequencer. It gives access to the **Job Sequencer** Lightning app and these tabs:
 
-- **Job Sequence Scheduler**: shows whether each frequency (Hourly through Yearly) is scheduled, with its next and last run, active sequence jobs and recent errors. From here you can schedule, unschedule or run a frequency now.
-- **Job Sequencer Settings**: the org-wide switch that turns the sequencer on or off, plus the retry settings.
+- **Home**: status tiles (sequencer on/off, scheduled frequencies, next run, active jobs, errors in the last 7 days), errors per day, recent runs, recent errors and the jobs that fail most.
+- **Job Sequence Scheduler**: shows whether each frequency (every 5 minutes through yearly) is scheduled, with its next and last run, active sequence jobs and recent errors. From here you can schedule, unschedule or run a frequency now.
+- **Sequence Jobs**: create, clone, edit, activate, deactivate and reorder Sequence Job records without going into Setup. The editor has a query wizard (object list, a field chooser at the cursor, paste a working query), Test Query, dropdowns for the handler class and its functions, and a Job Parameters builder for FieldShift values and query variables (DateTimeVar or swap-in text), each for scheduled runs or for when Test.isRunningTest() is true.
 - **Job Sequence Errors**: what went wrong in each run.
-- **Manage Sequence Jobs**: the Sequence Job records in Setup. This tab still needs the Customize Application permission.
+- **Job Sequencer Settings**: the org-wide switch that turns the sequencer on or off, the retry settings, and the run timeout.
 - **Job Sequencer Help**: the full guide.
+
+## Running more often than hourly
+The Every 5, 10, 15 and 30 Minutes frequencies are scheduled as one Apex job per slot in the hour (a Salesforce schedule can name only one minute), so Every 15 Minutes uses four scheduled jobs and Every 5 Minutes uses twelve. An org can have at most 100 scheduled Apex jobs.
+
+Each run is recorded as a **Job Sequence Run**. A run is skipped while the previous run of the same frequency is still going (the running run's **Times Skipped** is counted), unless that run is older than the **Run Timeout** setting (60 minutes by default).
+
+## Run metrics and cleanup
+- Each **Job Sequence Run** records its start, finish and duration, jobs run, records processed and failed, errors logged, and times skipped. Each sequence job in the run gets a **Job Sequence Run Step** with the same metrics, and each **Job Sequence Error** links to its run. Use the **Job Sequence Runs with Steps** report type for your own reports and dashboards.
+- **Settings tokens:** a Sequence Job's Select, Where and Parameters can use `{!Settings.FieldName__c}`, which is replaced with that field's value from Sequence Jobs Settings when the query is built.
+- **Cleanup on the sequencer itself:** two packaged Daily sequence jobs, `JOBSEQ_PURGE_RUNS` and `JOBSEQ_PURGE_ERRORS`, delete runs and errors older than the **Run History Days** and **Error History Days** settings (30 by default), using settings tokens. They only run when Daily is scheduled; the home page warns when it isn't.
+
+## Upgrading from 1.1.0 or earlier
+- The Classic **Job Sequencer** app is replaced by a Lightning app of the same name (API name `Job_Sequencer_App`). Update any profile app assignments or bookmarks that pointed at the old app.
+- Frequencies scheduled before 1.2.0 keep running on the original per-frequency classes (e.g. `JobSequenceHourly`), which don't skip a run that is still going. The Scheduler marks them; unschedule and schedule again to switch them over.
+- Saving from the **Sequence Jobs** tab needs Customize Application. If a save fails to start in an org that installed the package, enable **Setup > Apex Settings > "Deploy Metadata from Non-Certified Package Versions via Apex"**.
 
 # Security model
 Sequence jobs run in **system mode**. Their queries and DML ignore the running user's object permissions and field-level security, and the framework classes are `without sharing`, so record sharing doesn't limit them either. The original package has always worked this way. From API 67.0, Apex defaults to user mode, so the code marks system mode explicitly to keep that behavior.
@@ -63,7 +79,12 @@ What that means for admins:
 - **Triggers, flows, validation rules and duplicate rules still run** on the records a job changes, and they can still make a job fail.
 
 # Link to Unlocked Package Installer
-Job Sequencer 1.1.0 (unlocked package, no namespace). Installing it over 1.0.0 upgrades in place; your Sequence Job records and settings are kept.
+Job Sequencer is an unlocked package with no namespace (package ID `0HojV0000001HYHSA2`). The latest version is 1.2.0. Installing a newer version over an older one upgrades in place; your Sequence Job records and settings are kept. See [Upgrading from 1.1.0 or earlier](#upgrading-from-110-or-earlier).
 
-- Production / Developer Edition: https://login.salesforce.com/packaging/installPackage.apexp?p0=04tjV000000AkO9QAK
-- Sandbox: https://test.salesforce.com/packaging/installPackage.apexp?p0=04tjV000000AkO9QAK
+| Version | Package version ID | Install | What it added |
+| ------- | ------------------ | ------- | ------------- |
+| 1.2.0-1 | `04tjV000000AlC9QAK` | [Production / Developer Edition](https://login.salesforce.com/packaging/installPackage.apexp?p0=04tjV000000AlC9QAK) · [Sandbox](https://test.salesforce.com/packaging/installPackage.apexp?p0=04tjV000000AlC9QAK) | Lightning app with metrics home page, Sequence Jobs tab with query wizard and Job Parameters builder, sub-hourly frequencies, run metrics, settings tokens, cleanup jobs |
+| 1.1.0-1 | `04tjV000000AkO9QAK` | [Production / Developer Edition](https://login.salesforce.com/packaging/installPackage.apexp?p0=04tjV000000AkO9QAK) · [Sandbox](https://test.salesforce.com/packaging/installPackage.apexp?p0=04tjV000000AkO9QAK) | Scheduler and Settings tabs, Job Sequencer Admin permission set, API 68.0 |
+| 1.0.0-3 | `04tjV000000AkETQA0` | [Production / Developer Edition](https://login.salesforce.com/packaging/installPackage.apexp?p0=04tjV000000AkETQA0) · [Sandbox](https://test.salesforce.com/packaging/installPackage.apexp?p0=04tjV000000AkETQA0) | Long Text Area query and parameter fields; ApexDoc |
+
+To install from the CLI: `sf package install --package 04tjV000000AlC9QAK --target-org <alias> --wait 20`

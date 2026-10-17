@@ -4,7 +4,7 @@
     <defaultValue>&#39;Id&#39;</defaultValue>
     <externalId>false</externalId>
     <fieldManageability>SubscriberControlled</fieldManageability>
-    <inlineHelpText>What is the select statement you would like to use? DO NOT include the &#39;SELECT&#39; keyword</inlineHelpText>
+    <inlineHelpText>The fields to retrieve, separated by commas. DO NOT include the SELECT keyword. Parent fields (e.g. Account.Name) and subqueries are allowed.</inlineHelpText>
     <label>Query - Select</label>
     <length>20000</length>
     <type>LongTextArea</type>

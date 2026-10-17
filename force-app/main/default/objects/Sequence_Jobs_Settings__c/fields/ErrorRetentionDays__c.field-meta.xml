@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>ErrorRetentionDays__c</fullName>
+    <defaultValue>30</defaultValue>
+    <description>How many days of Job Sequence Errors the packaged cleanup sequence job keeps. Used as {!Settings.ErrorRetentionDays__c} in its query.</description>
+    <externalId>false</externalId>
+    <inlineHelpText>The daily cleanup sequence job deletes Job Sequence Errors older than this many days.</inlineHelpText>
+    <label>Error History Days</label>
+    <precision>4</precision>
+    <required>false</required>
+    <scale>0</scale>
+    <trackTrending>false</trackTrending>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

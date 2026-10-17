@@ -25,9 +25,20 @@
  *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
  *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
+ *   |  10/17/2026 |  Gary Butler      | List its functions (JobSequenceFunctionCatalog)         |
  *
  */
-global without sharing class JobSequenceDefaultHandler implements JobSequenceInterface {
+global without sharing class JobSequenceDefaultHandler implements JobSequenceInterface, JobSequenceFunctionCatalog {
+
+    /**
+     * @description Lists the functions executeFunction handles, for the Sequence Jobs tab's function dropdown. Add new
+     * function names here when you add them to executeFunction.
+     *
+     * @return The function names
+     */
+    global List<String> getFunctionNames() {
+        return new List<String>{'FieldShift'};
+    }
 
     /**
      * @description This method will execute functions based on the function name defined in the "Execution Job" defined on the

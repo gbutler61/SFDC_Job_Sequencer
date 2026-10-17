@@ -23,6 +23,11 @@
  *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
  *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
+ *   |  10/16/2026 |  Gary Butler      | Add runId to track the Job Sequence Run                 |
+ *   |  10/16/2026 |  Gary Butler      | Settings tokens; per-step run metrics                   |
+ *   |  10/16/2026 |  Gary Butler      | Order By optional in the built query                    |
+ *   |  10/17/2026 |  Gary Butler      | Fix parameter parsing and the {0} test swap             |
+ *   |  10/17/2026 |  Gary Butler      | Test Query: test-parameter override, queryTemplate      |
  *
  */
 global without sharing class JobSequence {
@@ -52,6 +57,35 @@ global without sharing class JobSequence {
     private Datetime g_DateTimeVar {get;set;}
 
     global Id jobId {get;set;}
+    //The Job Sequence Run this job belongs to; null when the sequence was started outside JobSequenceRunService
+    public Id runId {get;set;}
+    //Lets Test Query build a query with the unit-test parameter values outside a test; null means use Test.isRunningTest()
+    public static Boolean useTestParameters;
+    //The query as built from the record, before {0} and :DateTimeVar are filled in from the parameters
+    public String queryTemplate {get;set;}
+    //Metrics for the current sequence job (one step of its run); each step gets a new JobSequence, so they start at 0
+    public Datetime stepStartedAt {get;set;}
+    public Integer recordsProcessed {
+        get {
+            if (this.recordsProcessed == null) this.recordsProcessed = 0;
+            return this.recordsProcessed;
+        }
+        set;
+    }
+    public Integer recordsFailed {
+        get {
+            if (this.recordsFailed == null) this.recordsFailed = 0;
+            return this.recordsFailed;
+        }
+        set;
+    }
+    public Integer errorsLogged {
+        get {
+            if (this.errorsLogged == null) this.errorsLogged = 0;
+            return this.errorsLogged;
+        }
+        set;
+    }
 
     global String currentJob {get;set;}
     global String executionJob {get;set;}
@@ -121,12 +155,14 @@ global without sharing class JobSequence {
         this.jobType = sj.Type__c;
         this.paramStringsByStrings = getParamsFromSequenceJob(sj);
         this.query = constructQuery(sj);
+        this.queryTemplate = this.query;
         this.sj = sj;
         this.permDelete = sj.PermDelete__c;
         this.upsertField = sj.UpsertExtIdField__c;
         this.isBatchJob = sj.IsBatchJob__c;
-        if (this.paramStringsByStrings != null && String.isNotBlank(query)) {
-            this.query = updateQueryFromParams(this.query, this.paramStringsByStrings);
+        //A {0} placeholder is filled (blank when there are no parameters) so it never reaches the query
+        if (String.isNotBlank(query) && (this.paramStringsByStrings != null || query.contains('{0}'))) {
+            this.query = updateQueryFromParams(this.query, this.paramStringsByStrings == null ? new Map<String,String>() : this.paramStringsByStrings);
         }
         this.handlerName = sj.HandlerClass__c;
     }
@@ -139,7 +175,8 @@ global without sharing class JobSequence {
      * @param idScope   The ids that failed
      */
     global void logError(Id jobId, Exception e, Set<Id> idScope) {
-        JobSequenceUtilities.logError(jobId, this.currentJob, this.jobFrequency, e, idScope);
+        this.errorsLogged++;
+        JobSequenceUtilities.logError(jobId, this.currentJob, this.jobFrequency, e, idScope, this.runId);
     }
 
     /**
@@ -227,11 +264,13 @@ global without sharing class JobSequence {
      * @return      The constructed query
      */
     private String constructQuery(Sequence_Job__mdt sj) {
-        String returnQuery = 'SELECT {0} FROM {1} WHERE {2} ORDER BY {3}';
+        //Order By is optional; without one the query has no ORDER BY clause
+        String returnQuery = 'SELECT {0} FROM {1} WHERE {2}' + (String.isBlank(sj.OrderBy__c) ? '' : ' ORDER BY {3}');
         String limitStr = sj.Limit__c != null ? String.valueOf(sj.Limit__c) : null;
         limitStr = String.isNotBlank(limitStr) && limitStr.endsWith('.0') ? limitStr.left(limitStr.length()-2) : limitStr;
         returnQuery += String.isNotBlank(limitStr) ? ' LIMIT '+limitStr : '';
-        return String.format(returnQuery,new List<String>{sj.Select__c,sj.From__c,sj.Where__c,sj.OrderBy__c});
+        //{!Settings.Field__c} tokens are replaced with values from the Sequence Jobs Settings
+        return JobSequenceSettingsTokens.apply(String.format(returnQuery,new List<String>{sj.Select__c,sj.From__c,sj.Where__c,sj.OrderBy__c}));
     }
 
     /**
@@ -245,13 +284,41 @@ global without sharing class JobSequence {
         Map<String,String> returnMap;
         if (String.isNotBlank(sj.Parameters__c)) {
             returnMap = new Map<String,String>();
-            List<String> paramList = sj.Parameters__c.replaceAll('(\\r|\\n)+','').trim().split(',');
-            for (String params : paramList) {
-                List<String> paramPair = params.split(':');
-                returnMap.put(JobSequenceUtilities.trimCharacters(paramPair[0].trim().toLowerCase(),'"'),JobSequenceUtilities.trimCharacters(paramPair[1],'"'));
+            String paramText = JobSequenceSettingsTokens.apply(sj.Parameters__c).replaceAll('(\\r|\\n)+','').trim();
+            //Split on commas outside double quotes, then at the first colon, so values may contain commas and colons
+            for (String params : splitParameters(paramText)) {
+                Integer colon = params.indexOf(':');
+                if (colon < 1) throw new JobSequenceException('Job Parameter "' + params + '" needs a name and a value separated by a colon, e.g. Name:Value.');
+                returnMap.put(JobSequenceUtilities.trimCharacters(params.left(colon).trim().toLowerCase(),'"'),JobSequenceUtilities.trimCharacters(params.substring(colon + 1).trim(),'"'));
             }
         }
         return returnMap;
+    }
+
+    /**
+     * @description Splits Job Parameters text on commas that are not inside double quotes, skipping blank entries.
+     *
+     * @param paramText The Job Parameters text
+     *
+     * @return The name:value entries, trimmed
+     */
+    @TestVisible
+    private static List<String> splitParameters(String paramText) {
+        List<String> entries = new List<String>();
+        Boolean inQuotes = false;
+        String current = '';
+        for (Integer i = 0; i < paramText.length(); i++) {
+            String ch = paramText.substring(i, i + 1);
+            if (ch == '"') inQuotes = !inQuotes;
+            if (ch == ',' && !inQuotes) {
+                if (String.isNotBlank(current)) entries.add(current.trim());
+                current = '';
+            } else {
+                current += ch;
+            }
+        }
+        if (String.isNotBlank(current)) entries.add(current.trim());
+        return entries;
     }
 
     /**
@@ -306,14 +373,16 @@ global without sharing class JobSequence {
      * @return          The updated query
      */
     @TestVisible String updateQueryFromParams(String q, Map<String,String> paramMap) {
-        String testingParam = Test.isRunningTest() ?
+        Boolean inTest = useTestParameters != null ? useTestParameters : Test.isRunningTest();
+        String testingParam = inTest ?
                 Label.Job_Sequence_Test_Is_Running_Param : Label.Job_Sequence_Test_Is_Not_Running_Param;
         testingParam = testingParam.toLowerCase();
         //Checking to see if the query has a parameter update that it's looking for
         if (q.contains('{0}')) {
             q = q.contains('\'') ? q.replaceAll('\'','\'\'') : q;
             String testingParamVal = paramMap.containsKey(testingParam) ? paramMap.get(testingParam) : '';
-            q = String.isNotBlank(testingParamVal) ? String.format(q, new List<String> {testingParamVal}) : q;
+            //Always fill {0}: with no value for this context it becomes blank, as the help describes
+            q = String.format(q, new List<String> {testingParamVal});
         }
         //Processing date times that are present
         if (q.containsIgnoreCase('DateTimeVar') && !q.contains('{0}')) {

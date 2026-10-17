@@ -22,6 +22,7 @@
  *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
  *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
+ *   |  10/17/2026 |  Gary Butler      | Drop checks for the removed page redirects              |
  *
  */
 @IsTest
@@ -298,8 +299,6 @@ public with sharing class JobSequenceTests {
     @IsTest static void JobSequenceVisualforceContTests() {
         Test.startTest();
         JobSequenceVisualforceCont jsvc = new JobSequenceVisualforceCont();
-        System.assert(jsvc.getPageRefForSequenceJobs() != null, 'The page reference was returned as null');
-        System.assert(jsvc.getPageRefForSequenceJobCustomSettingSetup() != null, 'The page reference was returned as null');
         jsvc.scheduleHourlyRun();
         jsvc.scheduleDailyRun();
         jsvc.scheduleWeeklyRun();

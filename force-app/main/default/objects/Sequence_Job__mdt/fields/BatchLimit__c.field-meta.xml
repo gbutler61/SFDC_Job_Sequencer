@@ -4,7 +4,7 @@
     <defaultValue>200</defaultValue>
     <externalId>false</externalId>
     <fieldManageability>SubscriberControlled</fieldManageability>
-    <inlineHelpText>What should the batch size be set to? You may only enter upto 200</inlineHelpText>
+    <inlineHelpText>How many records each batch processes, from 1 to 200. Blank means 200.</inlineHelpText>
     <label>Job Batch Limit</label>
     <precision>3</precision>
     <required>false</required>

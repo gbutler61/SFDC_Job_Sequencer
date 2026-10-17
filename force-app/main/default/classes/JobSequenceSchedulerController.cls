@@ -1,6 +1,8 @@
 /**
  * @description: **JobSequenceSchedulerController** -- Apex controller for the jobSequenceScheduler LWC. Reports the
- * scheduled state of each out of the box frequency and schedules, unschedules or immediately runs them.
+ * scheduled state of each frequency (every 5 minutes through yearly) and schedules, unschedules or immediately runs
+ * them. Sub-hourly frequencies use one scheduled job per slot in the hour, because a Salesforce cron expression can
+ * name only one minute.
  * @author: Gary Butler
  * @date: 10/16/2026
  *
@@ -8,12 +10,21 @@
  *   | Date:       | By:               | Change Description                                      |
  *   | ----------- | ----------------- | ------------------------------------------------------- |
  *   |  10/16/2026 |  Gary Butler      | Initial Creation                                        |
+ *   |  10/16/2026 |  Gary Butler      | Sub-hourly frequencies; single JobSequenceScheduledRun  |
  *
  */
 public with sharing class JobSequenceSchedulerController {
     @TestVisible private static final List<String> FREQUENCIES = new List<String>{
+            'Every 5 Minutes', 'Every 10 Minutes', 'Every 15 Minutes', 'Every 30 Minutes',
             'Hourly', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'
     };
+    //Minutes between runs for the sub-hourly frequencies
+    @TestVisible private static final Map<String, Integer> MINUTE_INTERVALS = new Map<String, Integer>{
+            'Every 5 Minutes' => 5, 'Every 10 Minutes' => 10, 'Every 15 Minutes' => 15, 'Every 30 Minutes' => 30
+    };
+    //Frequencies that the original package scheduled with one class each (JobSequenceHourly, ...)
+    private static final Set<String> LEGACY_FREQUENCIES = new Set<String>{'Hourly', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'};
+    @TestVisible private static final String JOB_NAME_PREFIX = 'Job Sequencer: ';
     @TestVisible private static final Integer ERROR_LOOKBACK_DAYS = 7;
 
     //Lets tests stand in for active Sequence Job records, which cannot be inserted in a test
@@ -33,14 +44,38 @@ public with sharing class JobSequenceSchedulerController {
      */
     public class FrequencyStatus {
         @AuraEnabled public String frequency;
-        @AuraEnabled public String className;
         @AuraEnabled public Boolean isScheduled;
+        @AuraEnabled public Boolean isFullyScheduled;
+        @AuraEnabled public Boolean isLegacy;
+        @AuraEnabled public Boolean isHealthy;
+        @AuraEnabled public Integer scheduleCount;
+        @AuraEnabled public Integer expectedScheduleCount;
         @AuraEnabled public String state;
         @AuraEnabled public String cronExpression;
         @AuraEnabled public Datetime nextFireTime;
         @AuraEnabled public Datetime previousFireTime;
         @AuraEnabled public Integer activeJobCount;
         @AuraEnabled public Integer recentErrorCount;
+    }
+
+    /**
+     * @description One scheduled job slot of a frequency: its job name and cron expression.
+     */
+    @TestVisible
+    private class Slot {
+        public String jobName;
+        public String cronExpression;
+
+        /**
+         * @description Creates a slot.
+         *
+         * @param jobName        The scheduled job name
+         * @param cronExpression The cron expression
+         */
+        public Slot(String jobName, String cronExpression) {
+            this.jobName = jobName;
+            this.cronExpression = cronExpression;
+        }
     }
 
     /**
@@ -51,24 +86,39 @@ public with sharing class JobSequenceSchedulerController {
      */
     @AuraEnabled
     public static DashboardData getDashboardData() {
-        Map<String, CronTrigger> triggersByClassName = getCronTriggersByClassName();
+        Map<String, List<CronTrigger>> triggersByFrequency = getCronTriggersByFrequency();
         Map<String, Integer> activeJobCounts = getActiveJobCounts();
         Map<String, Integer> recentErrorCounts = getRecentErrorCounts();
+        Set<String> healthyStates = new Set<String>{'WAITING', 'ACQUIRED', 'EXECUTING'};
 
         DashboardData data = new DashboardData();
         data.sequencerEnabled = isSequencerEnabled();
         data.errorLookbackDays = ERROR_LOOKBACK_DAYS;
         data.frequencies = new List<FrequencyStatus>();
         for (String frequency : FREQUENCIES) {
+            List<CronTrigger> triggers = triggersByFrequency.containsKey(frequency) ? triggersByFrequency.get(frequency) : new List<CronTrigger>();
             FrequencyStatus status = new FrequencyStatus();
             status.frequency = frequency;
-            status.className = getClassName(frequency);
-            CronTrigger ct = triggersByClassName.get(status.className);
-            status.isScheduled = ct != null;
-            status.state = ct?.State;
-            status.cronExpression = ct?.CronExpression;
-            status.nextFireTime = ct?.NextFireTime;
-            status.previousFireTime = ct?.PreviousFireTime;
+            status.scheduleCount = triggers.size();
+            status.expectedScheduleCount = getSlots(frequency).size();
+            status.isScheduled = !triggers.isEmpty();
+            status.isLegacy = false;
+            status.isHealthy = true;
+            for (CronTrigger ct : triggers) {
+                status.isLegacy = status.isLegacy || !ct.CronJobDetail.Name.startsWith(JOB_NAME_PREFIX);
+                if (!healthyStates.contains(ct.State)) {
+                    status.isHealthy = false;
+                    status.state = ct.State;
+                }
+                if (ct.NextFireTime != null && (status.nextFireTime == null || ct.NextFireTime < status.nextFireTime)) {
+                    status.nextFireTime = ct.NextFireTime;
+                }
+                if (ct.PreviousFireTime != null && (status.previousFireTime == null || ct.PreviousFireTime > status.previousFireTime)) {
+                    status.previousFireTime = ct.PreviousFireTime;
+                }
+            }
+            status.isFullyScheduled = status.isLegacy ? status.isScheduled : status.scheduleCount >= status.expectedScheduleCount;
+            status.cronExpression = triggers.size() == 1 ? triggers[0].CronExpression : null;
             status.activeJobCount = activeJobCounts.containsKey(frequency) ? activeJobCounts.get(frequency) : 0;
             status.recentErrorCount = recentErrorCounts.containsKey(frequency) ? recentErrorCounts.get(frequency) : 0;
             data.frequencies.add(status);
@@ -78,33 +128,44 @@ public with sharing class JobSequenceSchedulerController {
     }
 
     /**
-     * @description Schedules the frequency's schedulable class with its default cron expression from the custom labels.
+     * @description Schedules every missing slot of a frequency with the single JobSequenceScheduledRun class. A
+     * frequency still scheduled with its original per-frequency class counts as scheduled.
      *
-     * @param frequency The frequency to schedule (Hourly, Daily, Weekly, Monthly, Quarterly or Yearly)
+     * @param frequency The frequency to schedule
      *
-     * @return The Id of the new scheduled job
+     * @return The Id of the first scheduled job created
      *
      * @throws AuraHandledException when the frequency is unknown, already scheduled, or cannot be scheduled
      */
     @AuraEnabled
     public static Id scheduleRun(String frequency) {
         validateFrequency(frequency);
-        String className = getClassName(frequency);
-        if (getCronTriggersByClassName().containsKey(className)) {
+        List<CronTrigger> existing = getCronTriggersByFrequency().get(frequency);
+        Set<String> existingNames = new Set<String>();
+        for (CronTrigger ct : existing == null ? new List<CronTrigger>() : existing) {
+            existingNames.add(ct.CronJobDetail.Name);
+        }
+        if (existing != null && (existingNames.contains('JobSequence' + frequency) || existingNames.size() >= getSlots(frequency).size())) {
             throw newAuraException('The ' + frequency + ' run is already scheduled.');
         }
+
+        Id firstId;
         try {
-            Id cronTriggerId = System.schedule(className, getCronExpression(frequency), (Schedulable) Type.forName(className).newInstance());
-            System.debug('JobSequenceSchedulerController()::scheduleRun:  cronTriggerId: ' + cronTriggerId);
-            return cronTriggerId;
+            for (Slot slot : getSlots(frequency)) {
+                if (existingNames.contains(slot.jobName)) continue;
+                Id cronTriggerId = System.schedule(slot.jobName, slot.cronExpression, new JobSequenceScheduledRun(frequency));
+                firstId = firstId == null ? cronTriggerId : firstId;
+            }
         } catch (Exception e) {
             System.debug(LoggingLevel.ERROR, 'JobSequenceSchedulerController()::scheduleRun:  e: ' + e);
             throw newAuraException('The ' + frequency + ' run could not be scheduled: ' + e.getMessage());
         }
+        System.debug('JobSequenceSchedulerController()::scheduleRun:  firstId: ' + firstId);
+        return firstId;
     }
 
     /**
-     * @description Schedules every frequency that is not scheduled yet.
+     * @description Schedules every frequency that is not fully scheduled yet.
      *
      * @return How many frequencies were scheduled
      *
@@ -112,11 +173,10 @@ public with sharing class JobSequenceSchedulerController {
      */
     @AuraEnabled
     public static Integer scheduleAllRuns() {
-        Map<String, CronTrigger> triggersByClassName = getCronTriggersByClassName();
         Integer scheduledCount = 0;
-        for (String frequency : FREQUENCIES) {
-            if (!triggersByClassName.containsKey(getClassName(frequency))) {
-                scheduleRun(frequency);
+        for (FrequencyStatus status : getDashboardData().frequencies) {
+            if (!status.isFullyScheduled) {
+                scheduleRun(status.frequency);
                 scheduledCount++;
             }
         }
@@ -125,7 +185,8 @@ public with sharing class JobSequenceSchedulerController {
     }
 
     /**
-     * @description Removes the frequency's scheduled job. Jobs that are already running are not interrupted.
+     * @description Removes every scheduled job of a frequency, including one made with the original per-frequency
+     * class. Runs already in progress are not interrupted.
      *
      * @param frequency The frequency to unschedule
      *
@@ -134,23 +195,26 @@ public with sharing class JobSequenceSchedulerController {
     @AuraEnabled
     public static void unscheduleRun(String frequency) {
         validateFrequency(frequency);
-        CronTrigger ct = getCronTriggersByClassName().get(getClassName(frequency));
-        if (ct == null) {
+        List<CronTrigger> triggers = getCronTriggersByFrequency().get(frequency);
+        if (triggers == null || triggers.isEmpty()) {
             throw newAuraException('The ' + frequency + ' run is not scheduled.');
         }
-        System.abortJob(ct.Id);
-        System.debug('JobSequenceSchedulerController()::unscheduleRun:  abortedId: ' + ct.Id);
+        for (CronTrigger ct : triggers) {
+            System.abortJob(ct.Id);
+        }
+        System.debug('JobSequenceSchedulerController()::unscheduleRun:  abortedCount: ' + triggers.size());
     }
 
     /**
-     * @description Starts the frequency's sequence jobs now, the same way the scheduled class does.
+     * @description Starts the frequency's sequence now, through the same run service the schedules use, so it is
+     * tracked as a Job Sequence Run and refused while the previous run is still going.
      *
      * @param frequency The frequency to run
      *
-     * @return The Id of the enqueued queueable job
+     * @return The Id of the Job Sequence Run
      *
-     * @throws AuraHandledException when the frequency is unknown, the sequencer is turned off, or the frequency has no
-     * active sequence jobs
+     * @throws AuraHandledException when the frequency is unknown, the sequencer is turned off, the frequency has no
+     * active sequence jobs, or the previous run is still going
      */
     @AuraEnabled
     public static Id runNow(String frequency) {
@@ -158,36 +222,84 @@ public with sharing class JobSequenceSchedulerController {
         if (!isSequencerEnabled()) {
             throw newAuraException('The job sequencer is turned off. Turn it on in Job Sequencer Settings first.');
         }
-        Integer activeJobCount = getActiveJobCounts().get(frequency);
-        if (activeJobCount == null || activeJobCount == 0) {
+        if (getActiveJobCount(frequency) == 0) {
             throw newAuraException('There are no active ' + frequency + ' sequence jobs to run.');
         }
-        Id jobId = System.enqueueJob(new JobSequenceQueueable(frequency));
-        System.debug('JobSequenceSchedulerController()::runNow:  jobId: ' + jobId);
-        return jobId;
+        JobSequenceRunService.StartResult result = JobSequenceRunService.startRun(frequency);
+        if (!result.started) {
+            throw newAuraException('The ' + frequency + ' sequence was not started because ' + result.reason);
+        }
+        System.debug('JobSequenceSchedulerController()::runNow:  runId: ' + result.run.Id);
+        return result.run.Id;
     }
 
     /**
-     * @description Finds the scheduled jobs for the out of the box schedulable classes. They are scheduled under
-     * the class name, so the job name identifies them.
+     * @description Counts the active Sequence Job records for one frequency.
      *
-     * @return The scheduled jobs keyed by class name
+     * @param frequency The frequency
+     *
+     * @return The number of active jobs
      */
-    private static Map<String, CronTrigger> getCronTriggersByClassName() {
-        Set<String> classNames = new Set<String>();
-        for (String frequency : FREQUENCIES) {
-            classNames.add(getClassName(frequency));
+    public static Integer getActiveJobCount(String frequency) {
+        Integer count = getActiveJobCounts().get(frequency);
+        return count == null ? 0 : count;
+    }
+
+    /**
+     * @description Returns the scheduled job slots for a frequency: one per run in the hour for sub-hourly
+     * frequencies, otherwise one using the frequency's cron custom label.
+     *
+     * @param frequency The frequency
+     *
+     * @return The slots
+     */
+    @TestVisible
+    private static List<Slot> getSlots(String frequency) {
+        List<Slot> slots = new List<Slot>();
+        Integer interval = MINUTE_INTERVALS.get(frequency);
+        if (interval == null) {
+            slots.add(new Slot(JOB_NAME_PREFIX + frequency, getCronExpression(frequency)));
+            return slots;
         }
-        Map<String, CronTrigger> triggersByClassName = new Map<String, CronTrigger>();
+        for (Integer minute = 0; minute < 60; minute += interval) {
+            String minuteLabel = minute < 10 ? '0' + minute : String.valueOf(minute);
+            slots.add(new Slot(JOB_NAME_PREFIX + frequency + ' (:' + minuteLabel + ')', '0 ' + minute + ' * * * ?'));
+        }
+        return slots;
+    }
+
+    /**
+     * @description Finds the scheduled jobs for every frequency: those this package names "Job Sequencer: ..." and
+     * those scheduled under the original class names (e.g. JobSequenceHourly).
+     *
+     * @return The scheduled jobs keyed by frequency
+     */
+    private static Map<String, List<CronTrigger>> getCronTriggersByFrequency() {
+        Map<String, String> frequencyByLegacyName = new Map<String, String>();
+        for (String frequency : LEGACY_FREQUENCIES) {
+            frequencyByLegacyName.put('JobSequence' + frequency, frequency);
+        }
+        Set<String> legacyNames = frequencyByLegacyName.keySet();
+        String namePattern = JOB_NAME_PREFIX + '%';
+
+        Map<String, List<CronTrigger>> triggersByFrequency = new Map<String, List<CronTrigger>>();
         for (CronTrigger ct : [
                 SELECT Id, State, CronExpression, NextFireTime, PreviousFireTime, CronJobDetail.Name
                 FROM CronTrigger
-                WHERE CronJobDetail.Name IN :classNames
+                WHERE CronJobDetail.Name LIKE :namePattern OR CronJobDetail.Name IN :legacyNames
                 WITH SYSTEM_MODE
         ]) {
-            triggersByClassName.put(ct.CronJobDetail.Name, ct);
+            String name = ct.CronJobDetail.Name;
+            String frequency = frequencyByLegacyName.containsKey(name)
+                    ? frequencyByLegacyName.get(name)
+                    : name.removeStart(JOB_NAME_PREFIX).substringBefore(' (:');
+            if (!FREQUENCIES.contains(frequency)) continue;
+            if (!triggersByFrequency.containsKey(frequency)) {
+                triggersByFrequency.put(frequency, new List<CronTrigger>());
+            }
+            triggersByFrequency.get(frequency).add(ct);
         }
-        return triggersByClassName;
+        return triggersByFrequency;
     }
 
     /**
@@ -240,18 +352,7 @@ public with sharing class JobSequenceSchedulerController {
     }
 
     /**
-     * @description Returns the out of the box schedulable class for a frequency, e.g. JobSequenceHourly.
-     *
-     * @param frequency The frequency
-     *
-     * @return The class name
-     */
-    private static String getClassName(String frequency) {
-        return 'JobSequence' + frequency;
-    }
-
-    /**
-     * @description Returns the default cron expression for a frequency from its custom label.
+     * @description Returns the default cron expression for an hourly-or-longer frequency from its custom label.
      *
      * @param frequency The frequency
      *
@@ -269,11 +370,11 @@ public with sharing class JobSequenceSchedulerController {
     }
 
     /**
-     * @description Rejects anything other than the out of the box frequencies.
+     * @description Rejects anything other than the supported frequencies.
      *
      * @param frequency The frequency passed in from the component
      *
-     * @throws AuraHandledException when the frequency is not one of the out of the box frequencies
+     * @throws AuraHandledException when the frequency is not supported
      */
     private static void validateFrequency(String frequency) {
         if (!FREQUENCIES.contains(frequency)) {

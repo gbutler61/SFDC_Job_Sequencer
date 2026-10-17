@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>RunTimeoutMinutes__c</fullName>
+    <defaultValue>60</defaultValue>
+    <description>How long a frequency's run may stay Running before the next scheduled run treats it as stopped (Abandoned) and starts anyway.</description>
+    <externalId>false</externalId>
+    <inlineHelpText>A new run of a frequency is skipped while its previous run is still going. After this many minutes, the previous run is treated as stopped and the new run starts.</inlineHelpText>
+    <label>Run Timeout (minutes)</label>
+    <precision>4</precision>
+    <required>false</required>
+    <scale>0</scale>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

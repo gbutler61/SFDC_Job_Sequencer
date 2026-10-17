@@ -15,6 +15,10 @@
                 <field>JobName__c</field>
             </layoutItems>
             <layoutItems>
+                <behavior>Readonly</behavior>
+                <field>Run__c</field>
+            </layoutItems>
+            <layoutItems>
                 <behavior>Edit</behavior>
                 <field>BatchJobId__c</field>
             </layoutItems>

@@ -8,11 +8,15 @@
  *   | Date:       | By:               | Change Description                                      |
  *   | ----------- | ----------------- | ------------------------------------------------------- |
  *   |  10/16/2026 |  Gary Butler      | Initial Creation                                        |
+ *   |  10/16/2026 |  Gary Butler      | Add Run Timeout setting                                 |
+ *   |  10/16/2026 |  Gary Butler      | Add Run and Error History Days settings                 |
  *
  */
 public with sharing class JobSequenceSettingsController {
     @TestVisible private static final Integer MAX_RETRIES_LIMIT = 999;
     @TestVisible private static final Integer MINUTES_UNTIL_RETRY_LIMIT = 99;
+    @TestVisible private static final Integer RUN_TIMEOUT_LIMIT = 9999;
+    @TestVisible private static final Integer RETENTION_DAYS_LIMIT = 9999;
 
     /**
      * @description Returns the org-wide default settings. When none have been saved yet, returns an unsaved record
@@ -37,14 +41,20 @@ public with sharing class JobSequenceSettingsController {
      * @param enabled           Whether the job sequencer runs sequence jobs
      * @param maxRetries        How many times a job is rescheduled when no batch slot is available (0-999)
      * @param minutesUntilRetry Minutes to wait between retry attempts (1-99)
+     * @param runTimeoutMinutes Minutes a run may stay Running before the next run treats it as stopped (1-9999)
+     * @param runRetentionDays  Days of Job Sequence Runs the cleanup job keeps (1-9999)
+     * @param errorRetentionDays Days of Job Sequence Errors the cleanup job keeps (1-9999)
      *
      * @return The saved org default Sequence Jobs Settings record
      *
      * @throws AuraHandledException when a value is missing or out of range, or the save fails
      */
     @AuraEnabled
-    public static Sequence_Jobs_Settings__c saveSettings(Boolean enabled, Integer maxRetries, Integer minutesUntilRetry) {
-        validateSettings(enabled, maxRetries, minutesUntilRetry);
+    public static Sequence_Jobs_Settings__c saveSettings(Boolean enabled, Integer maxRetries, Integer minutesUntilRetry,
+            Integer runTimeoutMinutes, Integer runRetentionDays, Integer errorRetentionDays) {
+        validateSettings(enabled, maxRetries, minutesUntilRetry, runTimeoutMinutes);
+        validateRetention(runRetentionDays, 'Run History Days');
+        validateRetention(errorRetentionDays, 'Error History Days');
 
         Sequence_Jobs_Settings__c settings = Sequence_Jobs_Settings__c.getOrgDefaults();
         if (settings == null || settings.Id == null) {
@@ -53,6 +63,9 @@ public with sharing class JobSequenceSettingsController {
         settings.Enabled__c = enabled;
         settings.MaxRetries__c = maxRetries;
         settings.MinutesUntilRetry__c = minutesUntilRetry;
+        settings.RunTimeoutMinutes__c = runTimeoutMinutes;
+        settings.RunRetentionDays__c = runRetentionDays;
+        settings.ErrorRetentionDays__c = errorRetentionDays;
 
         try {
             upsert as system settings;
@@ -70,10 +83,11 @@ public with sharing class JobSequenceSettingsController {
      * @param enabled           Whether the job sequencer runs sequence jobs
      * @param maxRetries        The maximum number of retries
      * @param minutesUntilRetry The minutes between retries
+     * @param runTimeoutMinutes The minutes before a running run is treated as stopped
      *
      * @throws AuraHandledException when a value is missing or out of range
      */
-    private static void validateSettings(Boolean enabled, Integer maxRetries, Integer minutesUntilRetry) {
+    private static void validateSettings(Boolean enabled, Integer maxRetries, Integer minutesUntilRetry, Integer runTimeoutMinutes) {
         if (enabled == null) {
             throw newAuraException('Enabled is required.');
         }
@@ -82,6 +96,23 @@ public with sharing class JobSequenceSettingsController {
         }
         if (minutesUntilRetry == null || minutesUntilRetry < 1 || minutesUntilRetry > MINUTES_UNTIL_RETRY_LIMIT) {
             throw newAuraException('Minutes Until Retry must be a whole number from 1 to ' + MINUTES_UNTIL_RETRY_LIMIT + '.');
+        }
+        if (runTimeoutMinutes == null || runTimeoutMinutes < 1 || runTimeoutMinutes > RUN_TIMEOUT_LIMIT) {
+            throw newAuraException('Run Timeout must be a whole number of minutes from 1 to ' + RUN_TIMEOUT_LIMIT + '.');
+        }
+    }
+
+    /**
+     * @description Checks a history-days setting is a whole number of days within range.
+     *
+     * @param days  The number of days
+     * @param label The setting's label, for the message
+     *
+     * @throws AuraHandledException when the value is missing or out of range
+     */
+    private static void validateRetention(Integer days, String label) {
+        if (days == null || days < 1 || days > RETENTION_DAYS_LIMIT) {
+            throw newAuraException(label + ' must be a whole number of days from 1 to ' + RETENTION_DAYS_LIMIT + '.');
         }
     }
 

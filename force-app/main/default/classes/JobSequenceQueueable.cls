@@ -23,6 +23,9 @@
  *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
  *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
+ *   |  10/16/2026 |  Gary Butler      | Carry run Id; finish the Job Sequence Run at chain end  |
+ *   |  10/16/2026 |  Gary Butler      | Record run steps for queueable jobs and failures        |
+ *   |  10/17/2026 |  Gary Butler      | Set jobId so queueable error emails are sent; debug     |
  *
  */
 global with sharing class JobSequenceQueueable implements Queueable, Database.AllowsCallouts {
@@ -36,21 +39,30 @@ global with sharing class JobSequenceQueueable implements Queueable, Database.Al
     global void execute(QueueableContext context) {
         if (js != null && js.sj != null && js.sjcs.Enabled__c) {
             try {
+                if (js.stepStartedAt == null) js.stepStartedAt = Datetime.now();
+                //Errors are logged against this job Id and finishJobSequence emails them
+                if (context != null) js.jobId = context.getJobId();
                 Boolean canProcessBatch = (js.isBatchJob && [SELECT count() FROM AsyncApexJob WHERE JobType='BatchApex' AND (Status = 'Processing' OR Status = 'Preparing') WITH SYSTEM_MODE] < 5);
 
                 if (canProcessBatch && js.isBatchJob) Database.executeBatch(new JobSequenceBatch(js),js.batchSize);
                 if (!canProcessBatch && js.isBatchJob) new JobSequence().scheduleRetry(js);
                 if (!js.isBatchJob) {
                     JobSequenceExe.executeQueueable(js);
+                    JobSequenceRunService.recordStep(js, 'Queueable', null, null, false);
                     //Setting up the next run after the queueable job has finished running
                     //Batch jobs will automatically kick off this same function in their finish context
                     if (Limits.getQueueableJobs() < Limits.getLimitQueueableJobs()) System.enqueueJob(new JobSequenceQueueable(js));
                 }
             } catch(Exception e) {
-                System.debug(LoggingLevel.Error, '*** e: ' + e);
+                System.debug(LoggingLevel.ERROR, 'JobSequenceQueueable()::execute:  e: ' + e);
                 js.logError(context.getJobId(), e, null);
                 if (js != null && js.jobId != null) js.sendErrorEmail(js.jobId, [SELECT Id FROM Job_Sequence_Error__c WHERE BatchJobId__c = :js.jobId WITH SYSTEM_MODE]);
+                //The sequence stops here, so the run it belongs to is over
+                JobSequenceRunService.recordStep(js, js.isBatchJob ? 'Batch' : 'Queueable', null, null, true);
+                JobSequenceRunService.finishRun(js.runId, JobSequenceRunService.STATUS_FAILED, e.getMessage());
             }
+        } else if (js != null && js.sj != null) {
+            JobSequenceRunService.finishRun(js.runId, JobSequenceRunService.STATUS_DISABLED, 'Stopped because the job sequencer was turned off.');
         }
     }
 
@@ -69,12 +81,27 @@ global with sharing class JobSequenceQueueable implements Queueable, Database.Al
     }
 
     /**
+     * @description Constructs a job sequence queueable for a run started by JobSequenceRunService. The run Id is
+     * carried through the sequence so the run can be marked finished when its last job completes.
+     *
+     * @param frequency The frequency of the sequence jobs to run
+     * @param runId     The Job Sequence Run that tracks this run
+     */
+    public JobSequenceQueueable(String frequency, Id runId) {
+        this.js = getNextJob(frequency,null);
+        if (this.js != null) this.js.runId = runId;
+        if (this.js == null) JobSequenceRunService.finishRun(runId, JobSequenceRunService.STATUS_COMPLETED, 'No active sequence jobs were found.');
+    }
+
+    /**
      * @description Constructs a job schedule queueable object based on the job sequence
      *
      * @param js    The current job sequence. Used to determine what the next sequence will be
      */
     global JobSequenceQueueable(JobSequence js) {
         this.js = getNextJob(js.jobFrequency,js);
+        //No next job means the sequence is done
+        if (this.js == null) JobSequenceRunService.finishRun(js.runId, JobSequenceRunService.STATUS_COMPLETED, null);
     }
 
     /**
@@ -86,6 +113,7 @@ global with sharing class JobSequenceQueueable implements Queueable, Database.Al
     global JobSequenceQueueable(JobSequence js, Boolean isRetry) {
         if (isRetry == null || !isRetry) this.js = getNextJob(js.jobFrequency,js);
         if (isRetry) this.js = js;
+        if (this.js == null) JobSequenceRunService.finishRun(js.runId, JobSequenceRunService.STATUS_COMPLETED, null);
     }
 
     /**
@@ -113,6 +141,8 @@ global with sharing class JobSequenceQueueable implements Queueable, Database.Al
 
                 if (returnRecord != null) break;
             }
+            //The next job belongs to the same run as the current one
+            if (returnRecord != null && js != null) returnRecord.runId = js.runId;
         } catch (Exception e) {
             JobSequenceUtilities.logError(js == null ? null : js.jobId, js == null ? null : js.currentJob, js == null ? null : js.jobFrequency, e, null);
         }

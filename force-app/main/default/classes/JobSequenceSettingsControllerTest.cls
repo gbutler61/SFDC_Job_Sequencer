@@ -8,6 +8,8 @@
  *   | Date:       | By:               | Change Description                                      |
  *   | ----------- | ----------------- | ------------------------------------------------------- |
  *   |  10/16/2026 |  Gary Butler      | Initial Creation                                        |
+ *   |  10/16/2026 |  Gary Butler      | Add Run Timeout setting                                 |
+ *   |  10/16/2026 |  Gary Butler      | Add Run and Error History Days settings                 |
  *
  */
 @IsTest
@@ -26,6 +28,9 @@ private class JobSequenceSettingsControllerTest {
         Assert.isTrue(settings.Enabled__c, 'Enabled should default to true');
         Assert.areEqual(10, settings.MaxRetries__c, 'Max Retries should default to 10');
         Assert.areEqual(5, settings.MinutesUntilRetry__c, 'Minutes Until Retry should default to 5');
+        Assert.areEqual(60, settings.RunTimeoutMinutes__c, 'Run Timeout should default to 60');
+        Assert.areEqual(30, settings.RunRetentionDays__c, 'Run History Days should default to 30');
+        Assert.areEqual(30, settings.ErrorRetentionDays__c, 'Error History Days should default to 30');
     }
 
     /**
@@ -34,8 +39,8 @@ private class JobSequenceSettingsControllerTest {
     @IsTest
     static void saveSettingsCreatesThenUpdatesOrgDefault() {
         Test.startTest();
-        Sequence_Jobs_Settings__c created = JobSequenceSettingsController.saveSettings(false, 3, 15);
-        Sequence_Jobs_Settings__c updated = JobSequenceSettingsController.saveSettings(true, 7, 20);
+        Sequence_Jobs_Settings__c created = JobSequenceSettingsController.saveSettings(false, 3, 15, 30, 30, 30);
+        Sequence_Jobs_Settings__c updated = JobSequenceSettingsController.saveSettings(true, 7, 20, 90, 14, 60);
         Test.stopTest();
 
         Assert.isNotNull(created.Id, 'The org default settings should have been created');
@@ -46,6 +51,9 @@ private class JobSequenceSettingsControllerTest {
         Assert.isTrue(stored.Enabled__c, 'Enabled should be updated');
         Assert.areEqual(7, stored.MaxRetries__c, 'Max Retries should be updated');
         Assert.areEqual(20, stored.MinutesUntilRetry__c, 'Minutes Until Retry should be updated');
+        Assert.areEqual(90, stored.RunTimeoutMinutes__c, 'Run Timeout should be updated');
+        Assert.areEqual(14, stored.RunRetentionDays__c, 'Run History Days should be updated');
+        Assert.areEqual(60, stored.ErrorRetentionDays__c, 'Error History Days should be updated');
         Assert.areEqual(stored.Id, JobSequenceSettingsController.getSettings().Id, 'getSettings should return the saved record');
     }
 
@@ -55,19 +63,24 @@ private class JobSequenceSettingsControllerTest {
     @IsTest
     static void saveSettingsRejectsInvalidValues() {
         List<List<Object>> invalidInputs = new List<List<Object>>{
-                new List<Object>{null, 10, 5},
-                new List<Object>{true, null, 5},
-                new List<Object>{true, -1, 5},
-                new List<Object>{true, JobSequenceSettingsController.MAX_RETRIES_LIMIT + 1, 5},
-                new List<Object>{true, 10, 0},
-                new List<Object>{true, 10, JobSequenceSettingsController.MINUTES_UNTIL_RETRY_LIMIT + 1}
+                new List<Object>{null, 10, 5, 60, 30, 30},
+                new List<Object>{true, null, 5, 60, 30, 30},
+                new List<Object>{true, -1, 5, 60, 30, 30},
+                new List<Object>{true, JobSequenceSettingsController.MAX_RETRIES_LIMIT + 1, 5, 60, 30, 30},
+                new List<Object>{true, 10, 0, 60, 30, 30},
+                new List<Object>{true, 10, JobSequenceSettingsController.MINUTES_UNTIL_RETRY_LIMIT + 1, 60, 30, 30},
+                new List<Object>{true, 10, 5, null, 30, 30},
+                new List<Object>{true, 10, 5, 0, 30, 30},
+                new List<Object>{true, 10, 5, 60, 0, 30},
+                new List<Object>{true, 10, 5, 60, 30, null}
         };
 
         Test.startTest();
         for (List<Object> input : invalidInputs) {
             Boolean errorThrown = false;
             try {
-                JobSequenceSettingsController.saveSettings((Boolean) input[0], (Integer) input[1], (Integer) input[2]);
+                JobSequenceSettingsController.saveSettings((Boolean) input[0], (Integer) input[1], (Integer) input[2], (Integer) input[3],
+                        (Integer) input[4], (Integer) input[5]);
             } catch (AuraHandledException e) {
                 errorThrown = String.isNotBlank(e.getMessage());
             }

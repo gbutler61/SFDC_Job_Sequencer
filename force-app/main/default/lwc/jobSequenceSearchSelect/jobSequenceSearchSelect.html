@@ -1,0 +1,76 @@
+<template>
+    <div class="slds-form-element">
+        <label class="slds-form-element__label" for="search-input">{label}</label>
+        <template lwc:if={fieldLevelHelp}>
+            <lightning-helptext content={fieldLevelHelp} class="slds-m-left_xx-small"></lightning-helptext>
+        </template>
+        <div class="slds-form-element__control">
+            <div class="slds-combobox_container">
+                <div class={comboboxClass}>
+                    <div class="slds-combobox__form-element slds-input-has-icon slds-input-has-icon_right" role="none">
+                        <input
+                            id="search-input"
+                            type="text"
+                            class="slds-input slds-combobox__input"
+                            role="combobox"
+                            autocomplete="off"
+                            aria-autocomplete="list"
+                            aria-controls={listboxId}
+                            aria-expanded={ariaExpanded}
+                            aria-activedescendant={activeDescendant}
+                            placeholder={placeholder}
+                            value={inputValue}
+                            disabled={disabled}
+                            onfocus={handleFocus}
+                            onblur={handleBlur}
+                            oninput={handleInput}
+                            onkeydown={handleKeyDown}
+                        />
+                        <span class="slds-icon_container slds-input__icon slds-input__icon_right">
+                            <lightning-icon icon-name="utility:search" size="x-small" alternative-text=""></lightning-icon>
+                        </span>
+                    </div>
+                    <div id={listboxId} class="slds-dropdown slds-dropdown_length-10 slds-dropdown_fluid" role="listbox" aria-label={label}>
+                        <ul class="slds-listbox slds-listbox_vertical" role="presentation">
+                            <template lwc:if={hasResults}>
+                                <template for:each={rows} for:item="row">
+                                    <template lwc:if={row.isHeader}>
+                                        <li key={row.key} role="presentation" class="slds-listbox__item">
+                                            <div class="slds-media slds-listbox__option slds-listbox__option_plain group-header" role="presentation">
+                                                <h3 class="slds-listbox__option-header" role="presentation">{row.label}</h3>
+                                            </div>
+                                        </li>
+                                    </template>
+                                    <template lwc:else>
+                                        <li key={row.key} role="presentation" class="slds-listbox__item">
+                                            <div
+                                                id={row.optionId}
+                                                class={row.className}
+                                                role="option"
+                                                aria-selected={row.ariaSelected}
+                                                data-value={row.value}
+                                                onmousedown={handleOptionMouseDown}
+                                            >
+                                                <span class="slds-media__body">
+                                                    <span class="option-label slds-truncate" title={row.label}>{row.label}</span>
+                                                    <span class="option-detail slds-truncate" title={row.detail}>{row.detail}</span>
+                                                </span>
+                                            </div>
+                                        </li>
+                                    </template>
+                                </template>
+                            </template>
+                            <template lwc:else>
+                                <li role="presentation" class="slds-listbox__item">
+                                    <div class="slds-media slds-listbox__option slds-listbox__option_plain" role="presentation">
+                                        <span class="slds-media__body slds-text-color_weak">No matches</span>
+                                    </div>
+                                </li>
+                            </template>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>

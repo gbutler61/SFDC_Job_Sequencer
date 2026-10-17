@@ -1,0 +1,58 @@
+:host {
+    --jsh-surface: var(--slds-g-color-surface-container-1, #ffffff);
+}
+
+.tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+    gap: 0.75rem;
+}
+
+.tile {
+    border: 1px solid var(--slds-g-color-border-1, #e5e5e5);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--jsh-surface);
+}
+
+.tile-label {
+    font-size: 0.8125rem;
+    color: var(--slds-g-color-on-surface-1, #5c5c5c);
+}
+
+.tile-value {
+    display: flex;
+    align-items: center;
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.25;
+    margin: 0.25rem 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.tile-value_small {
+    font-size: 1.25rem;
+}
+
+.tile-detail {
+    font-size: 0.75rem;
+    color: var(--slds-g-color-on-surface-1, #5c5c5c);
+    min-height: 1.125rem;
+}
+
+.panel {
+    border: 1px solid var(--slds-g-color-border-1, #e5e5e5);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.exception-preview {
+    color: var(--slds-g-color-on-surface-1, #5c5c5c);
+    word-break: break-word;
+}

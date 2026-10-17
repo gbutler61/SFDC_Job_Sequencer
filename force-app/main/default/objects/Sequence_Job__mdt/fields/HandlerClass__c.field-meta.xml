@@ -5,7 +5,7 @@
     <description>The default handler included with the package has some basic functions. See the documentation for more information on how to implement your own handler class.</description>
     <externalId>false</externalId>
     <fieldManageability>SubscriberControlled</fieldManageability>
-    <inlineHelpText>If you wish to use a customized handler for your sequence logic, then you must define it here.</inlineHelpText>
+    <inlineHelpText>The class that runs this job; it must implement JobSequenceInterface. Use JobSequenceDefaultHandler unless you have written your own handler.</inlineHelpText>
     <label>Handler Class</label>
     <length>255</length>
     <required>true</required>

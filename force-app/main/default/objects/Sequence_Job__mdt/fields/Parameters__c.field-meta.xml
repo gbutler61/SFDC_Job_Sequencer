@@ -3,7 +3,7 @@
     <fullName>Parameters__c</fullName>
     <externalId>false</externalId>
     <fieldManageability>SubscriberControlled</fieldManageability>
-    <inlineHelpText>If there are parameters that need to be set to run the function, enter them here. The parameters should be &quot;Parameter Name:Value&quot;. If there are multiple use a comma to separate. e.g. paramName1:value1,paramName2:value2</inlineHelpText>
+    <inlineHelpText>Name:Value pairs separated by commas, e.g. StageName:"Closed Lost", Description:Auto closed. Quotes are optional; use them around a value that contains a comma. Test.isRunningTest and !Test.isRunningTest swap in text for {0} in the Where, DateTimeVar=minutes sets :DateTimeVar, and {!Settings.Field__c} tokens use Job Sequencer Settings. See Job Sequencer Help.</inlineHelpText>
     <label>Job Parameters</label>
     <length>20000</length>
     <type>LongTextArea</type>

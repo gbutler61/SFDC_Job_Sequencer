@@ -37,6 +37,31 @@
                 <label>Yearly</label>
             </value>
             <value>
+                <fullName>Quarterly</fullName>
+                <default>false</default>
+                <label>Quarterly</label>
+            </value>
+            <value>
+                <fullName>Every 5 Minutes</fullName>
+                <default>false</default>
+                <label>Every 5 Minutes</label>
+            </value>
+            <value>
+                <fullName>Every 10 Minutes</fullName>
+                <default>false</default>
+                <label>Every 10 Minutes</label>
+            </value>
+            <value>
+                <fullName>Every 15 Minutes</fullName>
+                <default>false</default>
+                <label>Every 15 Minutes</label>
+            </value>
+            <value>
+                <fullName>Every 30 Minutes</fullName>
+                <default>false</default>
+                <label>Every 30 Minutes</label>
+            </value>
+            <value>
                 <fullName>Test Only</fullName>
                 <default>false</default>
                 <label>Test Only</label>

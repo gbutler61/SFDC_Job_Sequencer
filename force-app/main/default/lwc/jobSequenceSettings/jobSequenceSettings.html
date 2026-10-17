@@ -61,6 +61,48 @@
                     required
                     field-level-help="How many minutes elapse between retry attempts."
                     onchange={handleNumberChange}
+                    class="slds-m-bottom_small"
+                ></lightning-input>
+
+                <lightning-input
+                    type="number"
+                    label="Run Timeout (minutes)"
+                    data-field="runTimeoutMinutes"
+                    value={runTimeoutMinutes}
+                    min="1"
+                    max={runTimeoutLimit}
+                    step="1"
+                    required
+                    field-level-help="A frequency's run is skipped while its previous run is still going. After this many minutes, the previous run is treated as stopped and the next run starts."
+                    onchange={handleNumberChange}
+                    class="slds-m-bottom_small"
+                ></lightning-input>
+
+                <lightning-input
+                    type="number"
+                    label="Run History Days"
+                    data-field="runRetentionDays"
+                    value={runRetentionDays}
+                    min="1"
+                    max={retentionLimit}
+                    step="1"
+                    required
+                    field-level-help="The daily JOBSEQ_PURGE_RUNS sequence job deletes Job Sequence Runs (and their steps) older than this many days."
+                    onchange={handleNumberChange}
+                    class="slds-m-bottom_small"
+                ></lightning-input>
+
+                <lightning-input
+                    type="number"
+                    label="Error History Days"
+                    data-field="errorRetentionDays"
+                    value={errorRetentionDays}
+                    min="1"
+                    max={retentionLimit}
+                    step="1"
+                    required
+                    field-level-help="The daily JOBSEQ_PURGE_ERRORS sequence job deletes Job Sequence Errors older than this many days."
+                    onchange={handleNumberChange}
                 ></lightning-input>
             </template>
         </div>

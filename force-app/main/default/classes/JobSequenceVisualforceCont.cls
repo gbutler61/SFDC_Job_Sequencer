@@ -22,6 +22,7 @@
  *   |  10/16/2026 |  Gary Butler      | Fork: Select/Where/Params LongTextArea for complex SOQL |
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
  *   |  10/16/2026 |  Gary Butler      | API version 45.0 -> 68.0                                |
+ *   |  10/17/2026 |  Gary Butler      | Remove page redirects for the deleted Visualforce pages |
  *
  */
 public with sharing class JobSequenceVisualforceCont {
@@ -29,32 +30,6 @@ public with sharing class JobSequenceVisualforceCont {
      * @description Default constructor for the Job Sequencer Visualforce pages.
      */
     public JobSequenceVisualforceCont() {}
-
-    /**
-     * @description This function will get the page reference for the sequence jobs so the users can be re-directed to it after
-     * clicking on the tab.
-     *
-     * @return  The page reference for the Sequence Job custom meta data type
-     */
-    public PageReference getPageRefForSequenceJobs() {
-        String prefix = Sequence_Job__mdt.SObjectType.getDescribe().getKeyPrefix();
-        PageReference pr = new PageReference('/'+prefix+'?setupid=CustomMetadata');
-        pr.setRedirect(true);
-        return pr;
-    }
-
-    /**
-     * @description This function will return the page reference for the sequence job custom settings, so they users can be re-directed
-     * after clicking on the tab
-     *
-     * @return  The page reference to the custom settings for the sequence Job
-     */
-    public PageReference getPageRefForSequenceJobCustomSettingSetup() {
-       String preFix = Sequence_Jobs_Settings__c.SObjectType.getDescribe().getKeyPrefix();
-        PageReference pr = new PageReference('/setup/ui/listCustomSettingsData.apexp?id='+preFix);
-        pr.setRedirect(true);
-        return pr;
-    }
 
     /**
      * @description Schedules all of the out of the box job sequence runs

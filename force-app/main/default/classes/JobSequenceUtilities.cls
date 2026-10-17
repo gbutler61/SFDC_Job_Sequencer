@@ -23,11 +23,17 @@
  *   |  10/16/2026 |  Gary Butler      | Added ApexDoc comments                                  |
  *   |  10/16/2026 |  Gary Butler      | API 68.0; explicit system mode on SOQL/DML              |
  *   |  10/16/2026 |  Gary Butler      | Fix: check CronTrigger for existing scheduled run       |
+ *   |  10/16/2026 |  Gary Butler      | Count DML failures; link errors to their run            |
+ *   |  10/17/2026 |  Gary Butler      | Debug label format                                      |
  *
  */
 global without sharing class JobSequenceUtilities {
     private static final Set<String> DECIMAL_TYPES = new Set<String>{'DOUBLE','PERCENT','CURRENCY'};
     private static Set<String> FIELD_TYPES_TO_CAST = new Set<String> {'DATE','DATETIME','INTEGER','BOOLEAN','DOUBLE','PERCENT','CURRENCY'};
+    //Rows that failed in partial-success DML since JobSequenceExe last reset it; read for run metrics
+    public static Integer dmlFailureCount = 0;
+    //The job sequence JobSequenceExe is running, so errors logged without one are still tied to it and its run
+    public static JobSequence currentJobSequence;
 
     /**
      * @description This method perform the DML operation specified to the records passed.
@@ -69,8 +75,8 @@ global without sharing class JobSequenceUtilities {
         if (records != null && !records.isEmpty()) {
             try {
                 switch on operationType.toUpperCase() {
-                    when 'INSERT' { Database.insert(records,allOrNone,AccessLevel.SYSTEM_MODE);}
-                    when 'UPDATE' { Database.update(records,allOrNone,AccessLevel.SYSTEM_MODE);}
+                    when 'INSERT' { countFailures(Database.insert(records,allOrNone,AccessLevel.SYSTEM_MODE));}
+                    when 'UPDATE' { countFailures(Database.update(records,allOrNone,AccessLevel.SYSTEM_MODE));}
                     when 'DELETE' { handleDynamicDeletes(records,allOrNone,permDelete);}
                     when 'UPSERT' { handleDynamicUpsert(records,extIdField);}
                     when else {
@@ -78,6 +84,7 @@ global without sharing class JobSequenceUtilities {
                     }
                 }
             } catch (Exception e) {
+                dmlFailureCount += records.size();
                 logError(null,records,e);
             }
         }
@@ -144,7 +151,7 @@ global without sharing class JobSequenceUtilities {
     global static void handleDynamicDeletes(List<SObject> records, Boolean allOrNone, Boolean permDelete) {
         allOrNone = allOrNone == null ? false : allOrNone;
         permDelete = permDelete == null ? false : permDelete;
-        Database.delete(records,allOrNone,AccessLevel.SYSTEM_MODE);
+        countFailures(Database.delete(records,allOrNone,AccessLevel.SYSTEM_MODE));
         if (permDelete != null && permDelete) Database.emptyRecycleBin(new List<Id> (new Map<Id,SObject>(records).keySet()));
     }
 
@@ -170,6 +177,7 @@ global without sharing class JobSequenceUtilities {
             List<Database.UpsertResult> results;
             if (extId == null) results = Database.upsert(castRecords, true, AccessLevel.SYSTEM_MODE);
             if (extId != null) results = Database.upsert(castRecords, extId, true, AccessLevel.SYSTEM_MODE);
+            countFailures(results);
 
             records = castRecords;
         }
@@ -185,11 +193,13 @@ global without sharing class JobSequenceUtilities {
      * @param e     The exception
      */
     global static void logError(JobSequence js, List<SObject> scope, Exception e) {
-        Id jobId = js == null ? null : js.jobId;
-        String jobName = js == null ? 'Unknown' : js.currentJob;
-        String frequency = js == null ? 'Unknown' : js.jobFrequency;
+        JobSequence target = js != null ? js : currentJobSequence;
+        if (target != null) target.errorsLogged++;
+        Id jobId = target == null ? null : target.jobId;
+        String jobName = target == null ? 'Unknown' : target.currentJob;
+        String frequency = target == null ? 'Unknown' : target.jobFrequency;
         Set<Id> ids = scope == null ? null : new Map<Id,SObject>(scope).keySet();
-        logError(jobId, jobName, frequency, e, ids);
+        logError(jobId, jobName, frequency, e, ids, target == null ? null : target.runId);
     }
 
     /**
@@ -202,6 +212,20 @@ global without sharing class JobSequenceUtilities {
      * @param idScope       The ids that failed
      */
     global static void logError(Id jobId, String currentJob, String jobFrequency, Exception e, Set<Id> idScope) {
+        logError(jobId, currentJob, jobFrequency, e, idScope, null);
+    }
+
+    /**
+     * @description Logs an error in the Job Sequence Error object, linked to the Job Sequence Run it happened in
+     *
+     * @param jobId         The job Id to log against
+     * @param currentJob    The name of the current job
+     * @param jobFrequency  The frequency of the current job
+     * @param e             The exception
+     * @param idScope       The ids that failed
+     * @param runId         The Job Sequence Run, or null when unknown
+     */
+    public static void logError(Id jobId, String currentJob, String jobFrequency, Exception e, Set<Id> idScope, Id runId) {
         String exceptionText = String.format(
                 Label.Job_Sequence_Exception_Template,
                 new List<String> {
@@ -217,7 +241,8 @@ global without sharing class JobSequenceUtilities {
                 Exception__c = exceptionText,
                 Scope__c = idScope != null ? String.valueOf(idScope) : 'None',
                 JobName__c = currentJob,
-                JobFrequency__c = jobFrequency
+                JobFrequency__c = jobFrequency,
+                Run__c = runId
         );
         insert as system jse;
     }
@@ -318,7 +343,7 @@ global without sharing class JobSequenceUtilities {
     global static void setupScheduledRun(String className, String cronString) {
         //Scheduled jobs are tracked in CronTrigger (named after the class), not AsyncApexJob
         List<CronTrigger> existing = [SELECT Id FROM CronTrigger WHERE CronJobDetail.Name = :className WITH SYSTEM_MODE];
-        try {if (existing.isEmpty()) System.schedule(className, cronString, (Schedulable) Type.forName(className).newInstance());} catch (Exception e) {System.debug(LoggingLevel.Error, '*** e: ' + e);}
+        try {if (existing.isEmpty()) System.schedule(className, cronString, (Schedulable) Type.forName(className).newInstance());} catch (Exception e) {System.debug(LoggingLevel.ERROR, 'JobSequenceUtilities()::setupScheduledRun:  e: ' + e);}
 
     }
 
@@ -370,6 +395,34 @@ global without sharing class JobSequenceUtilities {
      *
      * @return                  The string with the character trimmed out.
      */
+    /**
+     * @description Adds the failed rows of a partial-success insert or update to the DML failure count
+     *
+     * @param results   The DML results
+     */
+    private static void countFailures(List<Database.SaveResult> results) {
+        for (Database.SaveResult result : results) if (!result.isSuccess()) dmlFailureCount++;
+    }
+
+    /**
+     * @description Adds the failed rows of a partial-success delete to the DML failure count
+     *
+     * @param results   The DML results
+     */
+    private static void countFailures(List<Database.DeleteResult> results) {
+        for (Database.DeleteResult result : results) if (!result.isSuccess()) dmlFailureCount++;
+    }
+
+    /**
+     * @description Adds the failed rows of an upsert to the DML failure count
+     *
+     * @param results   The DML results
+     */
+    private static void countFailures(List<Database.UpsertResult> results) {
+        if (results == null) return;
+        for (Database.UpsertResult result : results) if (!result.isSuccess()) dmlFailureCount++;
+    }
+
     global static String trimCharacters(String value, String character2Trim) {
         value = value.startsWith(character2Trim) ? value.substringAfter(character2Trim) : value;
         value = value.endsWith(character2Trim) ? value.substringBeforeLast(character2Trim) : value;

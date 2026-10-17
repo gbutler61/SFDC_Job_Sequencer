@@ -1,0 +1,156 @@
+<template>
+    <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-m-bottom_x-small">
+        <p class="slds-text-body_small slds-text-color_weak">
+            Build the Job Parameters below; the job's parameters text is shown underneath.
+        </p>
+        <lightning-button variant="base" label={modeToggleLabel} icon-name="utility:edit" onclick={handleToggleMode}></lightning-button>
+    </div>
+
+    <template lwc:if={isBuilderMode}>
+        <!-- FieldShift field values -->
+        <template lwc:if={isFieldShift}>
+            <div class="builder-panel">
+                <h4 class="slds-text-title_bold slds-m-bottom_x-small">Set field values</h4>
+                <p class="slds-text-body_small slds-text-color_weak slds-m-bottom_small">
+                    FieldShift sets these fields on every record the query returns, then saves the records.
+                </p>
+                <template lwc:if={noFieldsYet}>
+                    <p class="slds-text-body_small slds-text-color_weak">Choose the object in Query - From first.</p>
+                </template>
+                <template for:each={displayRows} for:item="row">
+                    <div key={row.key} class="slds-grid slds-gutters_x-small slds-wrap slds-grid_vertical-align-end field-row">
+                        <div class="slds-col slds-size_1-of-1 slds-medium-size_5-of-12">
+                            <c-job-sequence-search-select
+                                label="Field"
+                                placeholder="Search fields"
+                                options={updateableFieldOptions}
+                                exclude-values={row.excludeFields}
+                                selected-label={row.fieldLabel}
+                                data-key={row.key}
+                                onselect={handleRowField}
+                            ></c-job-sequence-search-select>
+                        </div>
+                        <div class="slds-col slds-size_1-of-1 slds-medium-size_4-of-12">
+                            <template lwc:if={row.isCheckbox}>
+                                <lightning-input type="checkbox" label="New value: checked" checked={row.checked} data-key={row.key} disabled={row.valueDisabled} onchange={handleRowValue} class="slds-p-bottom_x-small"></lightning-input>
+                            </template>
+                            <template lwc:elseif={row.isDate}>
+                                <lightning-input type="date" label="New value" value={row.value} data-key={row.key} disabled={row.valueDisabled} onchange={handleRowValue}></lightning-input>
+                            </template>
+                            <template lwc:elseif={row.isDateTime}>
+                                <lightning-input type="datetime" label="New value" value={row.value} data-key={row.key} disabled={row.valueDisabled} onchange={handleRowValue}></lightning-input>
+                            </template>
+                            <template lwc:elseif={row.isNumber}>
+                                <lightning-input type="number" label="New value" value={row.value} step="any" data-key={row.key} disabled={row.valueDisabled} onchange={handleRowValue}></lightning-input>
+                            </template>
+                            <template lwc:elseif={row.isPicklist}>
+                                <lightning-combobox label="New value" value={row.value} options={row.picklistOptions} data-key={row.key} disabled={row.valueDisabled} onchange={handleRowValue}></lightning-combobox>
+                            </template>
+                            <template lwc:else>
+                                <lightning-input label="New value" value={row.value} data-key={row.key} disabled={row.valueDisabled} onchange={handleRowValue}></lightning-input>
+                            </template>
+                        </div>
+                        <div class="slds-col slds-size_1-of-2 slds-medium-size_2-of-12 slds-p-bottom_x-small">
+                            <lightning-input type="checkbox" label="Set to blank" checked={row.isBlank} data-key={row.key} onchange={handleRowBlank}></lightning-input>
+                        </div>
+                        <div class="slds-col slds-size_1-of-2 slds-medium-size_1-of-12 slds-p-bottom_xx-small">
+                            <lightning-button-icon icon-name="utility:delete" alternative-text="Remove this field" title="Remove this field" data-key={row.key} onclick={handleRemoveRow}></lightning-button-icon>
+                        </div>
+                    </div>
+                </template>
+                <lightning-button label="Add field" icon-name="utility:add" onclick={handleAddRow} disabled={noFieldsYet} class="slds-m-top_x-small"></lightning-button>
+            </div>
+        </template>
+
+        <!-- Variables -->
+        <div class="builder-panel">
+            <h4 class="slds-text-title_bold slds-m-bottom_x-small">Variables</h4>
+            <p class="slds-text-body_small slds-text-color_weak slds-m-bottom_small">
+                Values filled into the query when it runs. Insert them into Query - Where from the field chooser. Each
+                row is for scheduled runs, or, with Test.isRunningTest() checked, for when Test.isRunningTest() is true.
+            </p>
+            <template for:each={displayVariableRows} for:item="row">
+                <div key={row.key} class="slds-grid slds-gutters_x-small slds-wrap slds-grid_vertical-align-end field-row">
+                    <div class="slds-col slds-size_1-of-1 slds-medium-size_4-of-12">
+                        <lightning-combobox label="Variable" value={row.variable} options={variableOptions} data-key={row.key} onchange={handleVariableName}></lightning-combobox>
+                    </div>
+                    <template lwc:if={row.isDateTime}>
+                        <div class="slds-col slds-size_1-of-2 slds-medium-size_2-of-12">
+                            <lightning-input
+                                type="number"
+                                label="Amount"
+                                value={row.amount}
+                                step="1"
+                                data-key={row.key}
+                                field-level-help="From when the job runs: negative is the past, e.g. -1 days is 24 hours ago."
+                                onchange={handleVariableAmount}
+                            ></lightning-input>
+                        </div>
+                        <div class="slds-col slds-size_1-of-2 slds-medium-size_2-of-12">
+                            <lightning-combobox label="Unit" value={row.unit} options={unitOptions} data-key={row.key} onchange={handleVariableUnit}></lightning-combobox>
+                        </div>
+                    </template>
+                    <template lwc:else>
+                        <div class="slds-col slds-size_1-of-1 slds-medium-size_4-of-12">
+                            <lightning-input
+                                label="Text"
+                                value={row.text}
+                                placeholder="AND IsActive = true"
+                                data-key={row.key}
+                                field-level-help={swapTextHelp}
+                                onchange={handleVariableText}
+                            ></lightning-input>
+                        </div>
+                    </template>
+                    <div class="slds-col slds-size_1-of-2 slds-medium-size_3-of-12 slds-p-bottom_x-small">
+                        <lightning-input type="checkbox" label="Test.isRunningTest()" checked={row.isTest} data-key={row.key} onchange={handleVariableTest}></lightning-input>
+                    </div>
+                    <div class="slds-col slds-size_1-of-2 slds-medium-size_1-of-12 slds-p-bottom_xx-small">
+                        <lightning-button-icon icon-name="utility:delete" alternative-text="Remove this variable" title="Remove this variable" data-key={row.key} onclick={handleRemoveVariable}></lightning-button-icon>
+                    </div>
+                </div>
+            </template>
+            <lightning-button label="Add variable" icon-name="utility:add" onclick={handleAddVariable} class="slds-m-top_x-small"></lightning-button>
+
+            <template lwc:if={hasVariableProblems}>
+                <div class="slds-notify slds-notify_alert slds-alert_error slds-m-top_small" role="alert">
+                    <template for:each={variableProblems} for:item="problem">
+                        <h2 key={problem}>{problem}</h2>
+                    </template>
+                </div>
+            </template>
+            <template lwc:if={whereWarning}>
+                <div class="slds-notify slds-notify_alert slds-alert_warning slds-m-top_small" role="alert">
+                    <h2>{whereWarning}</h2>
+                </div>
+            </template>
+        </div>
+
+        <template lwc:if={hasOtherEntries}>
+            <div class="builder-panel">
+                <lightning-textarea
+                    label="Other parameters"
+                    value={otherText}
+                    field-level-help="Parameters the builder doesn't recognize, such as ones a custom handler reads. They are kept as they are."
+                    onchange={handleOtherChange}
+                ></lightning-textarea>
+            </div>
+        </template>
+
+        <template lwc:if={hasGeneratedText}>
+            <p class="slds-text-body_small slds-text-color_weak slds-m-top_small">Job Parameters text:</p>
+            <pre class="code-block"><code>{generatedText}</code></pre>
+        </template>
+    </template>
+
+    <template lwc:else>
+        <lightning-textarea
+            label="Job Parameters"
+            value={rawText}
+            max-length="20000"
+            field-level-help="Name:Value pairs separated by commas. Quotes are optional unless a value contains a comma. See Job Sequencer Help."
+            onchange={handleRawChange}
+            class="raw-text"
+        ></lightning-textarea>
+    </template>
+</template>

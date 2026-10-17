@@ -1,0 +1,60 @@
+<template>
+    <lightning-card title="Sequence Jobs" icon-name="standard:custom_metadata_type">
+        <div slot="actions">
+            <lightning-button variant="brand" label="New" onclick={handleNew}></lightning-button>
+            <lightning-button-icon
+                icon-name="utility:refresh"
+                alternative-text="Refresh"
+                title="Refresh"
+                onclick={handleRefresh}
+                disabled={isLoading}
+                class="slds-m-left_x-small"
+            ></lightning-button-icon>
+        </div>
+
+        <div class="slds-p-horizontal_medium">
+            <div class="slds-grid slds-grid_vertical-align-end slds-m-bottom_small">
+                <lightning-combobox
+                    label="Frequency"
+                    value={selectedFrequency}
+                    options={filterOptions}
+                    onchange={handleFilterChange}
+                    class="filter"
+                ></lightning-combobox>
+                <p class="slds-text-color_weak slds-text-body_small slds-m-left_medium slds-p-bottom_x-small">
+                    Jobs run in Order within their frequency. Deactivate a job to retire it; delete it from Setup if needed.
+                </p>
+            </div>
+
+            <template lwc:if={isSaving}>
+                <div class="slds-notify slds-notify_alert slds-alert_offline slds-m-bottom_small" role="status">
+                    <h2>{pendingMessage}</h2>
+                </div>
+            </template>
+
+            <template lwc:if={loadError}>
+                <div class="slds-notify slds-notify_alert slds-alert_error slds-m-bottom_small" role="alert">
+                    <h2>The sequence jobs could not be loaded: {loadError}</h2>
+                </div>
+            </template>
+
+            <template lwc:if={isLoading}>
+                <lightning-spinner alternative-text="Loading" size="small"></lightning-spinner>
+            </template>
+
+            <template lwc:if={hasRows}>
+                <lightning-datatable
+                    key-field="developerName"
+                    data={rows}
+                    columns={columns}
+                    hide-checkbox-column
+                    onrowaction={handleRowAction}
+                ></lightning-datatable>
+            </template>
+            <template lwc:elseif={isLoading}></template>
+            <template lwc:else>
+                <p class="slds-text-color_weak slds-p-vertical_medium">No sequence jobs for this frequency yet. Click New to create one.</p>
+            </template>
+        </div>
+    </lightning-card>
+</template>

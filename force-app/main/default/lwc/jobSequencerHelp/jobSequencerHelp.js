@@ -19,6 +19,7 @@ const SECTIONS = [
     { name: 'common_functions', label: 'Common Functions in the Default Handler' },
     { name: 'using_custom_handler', label: 'Using a Custom Handler' },
     { name: 'scheduling_jobs', label: 'Scheduling Jobs' },
+    { name: 'run_history', label: 'Run History and Cleanup' },
     { name: 'security_model', label: 'Security Model' },
     { name: 'pro_tips', label: 'Pro Tips' },
     { name: 'legal', label: 'Legal Disclosure' }
@@ -31,6 +32,7 @@ export default class JobSequencerHelp extends NavigationMixin(LightningElement) 
     // Text containing braces can't be written literally in an LWC template, so it is bound from here
     placeholderToken = '{0}';
     placeholderWhereExample = "StatusField = 'xyz' {0}";
+    settingsTokenExample = '{!Settings.FieldName__c}';
 
     handleNavigate(event) {
         this.selectedSection = event.detail.name;
@@ -55,6 +57,7 @@ export default class JobSequencerHelp extends NavigationMixin(LightningElement) 
      * @param {Event} event The click event from a button with a data-tab attribute holding the tab API name
      */
     handleOpenTab(event) {
+        event.preventDefault();
         this[NavigationMixin.Navigate]({
             type: 'standard__navItemPage',
             attributes: { apiName: event.currentTarget.dataset.tab }

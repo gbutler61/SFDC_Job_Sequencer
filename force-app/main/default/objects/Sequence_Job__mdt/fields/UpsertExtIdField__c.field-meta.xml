@@ -3,7 +3,7 @@
     <fullName>UpsertExtIdField__c</fullName>
     <externalId>false</externalId>
     <fieldManageability>SubscriberControlled</fieldManageability>
-    <inlineHelpText>If this is an upsert operation, this should be the API name of the external Id that will be used to upsert against (if any). Salesforce automatically treats the Id field as the default and should not be defined here if that&#39;s the one to be used.</inlineHelpText>
+    <inlineHelpText>Not currently used: the Sequence Job validation rules allow only UPDATE and DELETE for DML jobs. For an upsert, this would be the API name of the external Id field to match on; leave it blank to match on Id.</inlineHelpText>
     <label>Upsert External Id Field</label>
     <length>80</length>
     <required>false</required>

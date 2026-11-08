@@ -121,6 +121,18 @@ sub-hourly frequencies, run tracking, the long text query fields and the DML typ
                         To change a job sequence, you'll need to edit the "Sequence Job" custom meta data record. On the <strong>Sequence Jobs</strong> tab, use a row's menu to <strong>Edit</strong>, <strong>Clone</strong>, <strong>Activate</strong> or <strong>Deactivate</strong> it, or <strong>Move up</strong> or <strong>Move down</strong> to change its run order. Records can't be
                         deleted from the tab; deactivate them, or delete them in Setup with <strong>Open in Setup</strong>.
                     </p>
+                    <p class="slds-m-bottom_small">
+                        Narrow the list with the <strong>Search</strong> box (it looks in the label, API name, description, object, handler, execution and order) and the
+                        <strong>Frequency</strong>, <strong>Status</strong>, <strong>Object</strong>, <strong>Type</strong>, <strong>Handler</strong> and <strong>Execution</strong> filters.
+                        To change several jobs at once, check their rows, then click <strong>Activate</strong> or <strong>Deactivate</strong>, or pick a frequency in
+                        <strong>Move to frequency</strong>. The selected jobs are saved together in one deployment. Moved jobs keep their Order, so check where they land
+                        and use <strong>Move up</strong> or <strong>Move down</strong> if needed.
+                    </p>
+                    <p class="slds-m-bottom_small">
+                        Every job needs a <strong>Description</strong> of at least 25 characters. Jobs saved before version 1.4.0 keep running without one, but they
+                        can't be saved again (including activating, deactivating, moving or reordering them) until you <strong>Edit</strong> them and add one. A mass
+                        update leaves those jobs out and lists them.
+                    </p>
                     <p class="slds-m-bottom_small">You can also edit the record in Setup:</p>
                     <ol class="slds-list_ordered">
                         <li>Go to <strong>Setup</strong> area.</li>
@@ -144,6 +156,10 @@ sub-hourly frequencies, run tracking, the long text query fields and the DML typ
                                     may not have spaces or special characters besides underscores
                                 </li>
                                 <li><strong>Label</strong>: The Name of the job, it can contain any characters</li>
+                                <li>
+                                    <strong>Description</strong>: Required, at least 25 characters. Say what the job does and why: which records it
+                                    touches, what it changes and who relies on it, so whoever maintains it later knows whether it can be changed or retired.
+                                </li>
                                 <li>
                                     <strong>Active</strong>: When this box is checked, the job sequence will run. If
                                     unchecked, it will be skipped

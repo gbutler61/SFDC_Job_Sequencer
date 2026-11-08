@@ -13,18 +13,65 @@
         </div>
 
         <div class="slds-p-horizontal_medium">
-            <div class="slds-grid slds-grid_vertical-align-end slds-m-bottom_small">
-                <lightning-combobox
-                    label="Frequency"
-                    value={selectedFrequency}
-                    options={filterOptions}
-                    onchange={handleFilterChange}
-                    class="filter"
-                ></lightning-combobox>
-                <p class="slds-text-color_weak slds-text-body_small slds-m-left_medium slds-p-bottom_x-small">
+            <div class="slds-grid slds-wrap slds-gutters_x-small slds-grid_vertical-align-end slds-m-bottom_x-small">
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_3-of-12">
+                    <lightning-input
+                        type="search"
+                        label="Search"
+                        placeholder="Label, name, description, object, handler…"
+                        value={searchTerm}
+                        onchange={handleSearchChange}
+                    ></lightning-input>
+                </div>
+                <div class="slds-col slds-size_1-of-2 slds-medium-size_2-of-12">
+                    <lightning-combobox label="Frequency" data-filter="frequency" value={filters.frequency} options={frequencyFilterOptions} onchange={handleFilterChange}></lightning-combobox>
+                </div>
+                <div class="slds-col slds-size_1-of-2 slds-medium-size_1-of-12">
+                    <lightning-combobox label="Status" data-filter="status" value={filters.status} options={statusFilterOptions} onchange={handleFilterChange}></lightning-combobox>
+                </div>
+                <div class="slds-col slds-size_1-of-2 slds-medium-size_2-of-12">
+                    <lightning-combobox label="Object" data-filter="fromObject" value={filters.fromObject} options={objectFilterOptions} onchange={handleFilterChange}></lightning-combobox>
+                </div>
+                <div class="slds-col slds-size_1-of-2 slds-medium-size_1-of-12">
+                    <lightning-combobox label="Type" data-filter="jobType" value={filters.jobType} options={typeFilterOptions} onchange={handleFilterChange}></lightning-combobox>
+                </div>
+                <div class="slds-col slds-size_1-of-2 slds-medium-size_2-of-12">
+                    <lightning-combobox label="Handler" data-filter="handlerClass" value={filters.handlerClass} options={handlerFilterOptions} onchange={handleFilterChange}></lightning-combobox>
+                </div>
+                <div class="slds-col slds-size_1-of-2 slds-medium-size_1-of-12">
+                    <lightning-combobox label="Execution" data-filter="executionJob" value={filters.executionJob} options={executionFilterOptions} onchange={handleFilterChange}></lightning-combobox>
+                </div>
+            </div>
+            <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-m-bottom_small">
+                <p class="slds-text-color_weak slds-text-body_small">
+                    {countText}
+                    <template lwc:if={isFiltered}>
+                        &nbsp;·&nbsp;<a href="#" onclick={handleClearFilters}>Clear filters</a>
+                    </template>
+                </p>
+                <p class="slds-text-color_weak slds-text-body_small">
                     Jobs run in Order within their frequency. Deactivate a job to retire it; delete it from Setup if needed.
                 </p>
             </div>
+
+            <template lwc:if={hasSelection}>
+                <div class="slds-box slds-box_x-small slds-theme_shade slds-grid slds-wrap slds-grid_vertical-align-end slds-m-bottom_small selection-bar">
+                    <p class="slds-text-title_bold slds-m-right_medium slds-p-bottom_x-small">{selectionText}</p>
+                    <lightning-button label="Activate" icon-name="utility:check" onclick={handleMassActivate} disabled={isSaving} class="slds-m-right_x-small"></lightning-button>
+                    <lightning-button label="Deactivate" icon-name="utility:block_visitor" onclick={handleMassDeactivate} disabled={isSaving} class="slds-m-right_small"></lightning-button>
+                    <lightning-combobox
+                        label="Change Frequency"
+                        variant="label-hidden"
+                        placeholder="Move to frequency…"
+                        value={moveToFrequency}
+                        options={moveFrequencyOptions}
+                        onchange={handleMassFrequency}
+                        disabled={isSaving}
+                        class="move-frequency slds-m-right_small"
+                    ></lightning-combobox>
+                    <lightning-button variant="base" label="Clear selection" onclick={handleClearSelection} class="slds-p-bottom_x-small"></lightning-button>
+                </div>
+            </template>
 
             <template lwc:if={isSaving}>
                 <div class="slds-notify slds-notify_alert slds-alert_offline slds-m-bottom_small" role="status">
@@ -47,13 +94,17 @@
                     key-field="developerName"
                     data={rows}
                     columns={columns}
-                    hide-checkbox-column
+                    selected-rows={selectedKeys}
+                    onrowselection={handleRowSelection}
                     onrowaction={handleRowAction}
                 ></lightning-datatable>
             </template>
             <template lwc:elseif={isLoading}></template>
+            <template lwc:elseif={hasJobs}>
+                <p class="slds-text-color_weak slds-p-vertical_medium">No sequence jobs match these filters.</p>
+            </template>
             <template lwc:else>
-                <p class="slds-text-color_weak slds-p-vertical_medium">No sequence jobs for this frequency yet. Click New to create one.</p>
+                <p class="slds-text-color_weak slds-p-vertical_medium">No sequence jobs yet. Click New to create one.</p>
             </template>
         </div>
     </lightning-card>

@@ -63,6 +63,19 @@
                 ></lightning-input>
                 <lightning-input type="email" label="Job Notification Email" data-field="notificationEmail" value={form.notificationEmail} field-level-help="Error emails always go to the user who scheduled the job. Enter an address here to send them to it as well." onchange={handleChange} class="slds-m-top_x-small"></lightning-input>
             </div>
+            <div class="slds-col slds-size_1-of-1 slds-m-top_x-small">
+                <lightning-textarea
+                    label="Description"
+                    data-field="description"
+                    class="description"
+                    value={form.description}
+                    max-length="5000"
+                    required
+                    field-level-help="What the job does and why: which records it touches, what it changes, and who relies on it."
+                    onchange={handleChange}
+                ></lightning-textarea>
+                <p class={descriptionCountClass}>{descriptionCountText}</p>
+            </div>
         </div>
 
         <h3 class="slds-text-heading_small slds-m-top_medium slds-m-bottom_small">Job details</h3>

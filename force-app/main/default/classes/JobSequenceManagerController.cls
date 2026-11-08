@@ -25,10 +25,13 @@
  *   |  10/17/2026 |  Gary Butler      | Handler/function lists; field types for the builder     |
  *   |  10/17/2026 |  Gary Butler      | Typed variables: build, check and test JSON parameters  |
  *   |  10/17/2026 |  Gary Butler      | Run a One Time job standalone                           |
+ *   |  10/21/2026 |  Gary Butler      | Description; mass activate and change frequency         |
  *
  */
 public with sharing class JobSequenceManagerController {
     private static final String TYPE_PREFIX = 'Sequence_Job.';
+    //Matches the SJ_Description_Required validation rule
+    @TestVisible private static final Integer DESCRIPTION_MIN_LENGTH = 25;
     private static final Integer TEST_QUERY_SAMPLE_SIZE = 5;
     @TestVisible private static final Integer TEST_QUERY_COUNT_LIMIT = 2000;
     private static final Pattern DEVELOPER_NAME_PATTERN = Pattern.compile('^[A-Za-z][A-Za-z0-9_]{0,39}$');
@@ -75,6 +78,7 @@ public with sharing class JobSequenceManagerController {
         @AuraEnabled public Id recordId;
         @AuraEnabled public String developerName;
         @AuraEnabled public String label;
+        @AuraEnabled public String description;
         @AuraEnabled public Boolean active;
         @AuraEnabled public String frequency;
         @AuraEnabled public String order;
@@ -93,6 +97,18 @@ public with sharing class JobSequenceManagerController {
         @AuraEnabled public String whereClause;
         @AuraEnabled public String orderBy;
         @AuraEnabled public Integer recordLimit;
+    }
+
+    /**
+     * @description The outcome of starting a mass update: which jobs went into the deployment, which already had the
+     * new value, and which were left out because they need a description first.
+     */
+    public class MassUpdateResult {
+        //Null when no job needed saving
+        @AuraEnabled public Id deploymentId;
+        @AuraEnabled public List<String> updated = new List<String>();
+        @AuraEnabled public List<String> unchanged = new List<String>();
+        @AuraEnabled public List<String> needDescription = new List<String>();
     }
 
     /**
@@ -207,8 +223,81 @@ public with sharing class JobSequenceManagerController {
     @AuraEnabled
     public static Id setActive(String developerName, Boolean active) {
         SequenceJob job = getExistingJob(developerName);
+        requireDescription(job);
         job.active = active == true;
         return deploy(new List<SequenceJob>{job});
+    }
+
+    /**
+     * @description Activates or deactivates several Sequence Jobs in one deployment. Jobs that already have that
+     * value are left alone, and jobs without a valid description are left out, because the validation rule would
+     * fail the whole deployment.
+     *
+     * @param developerNames The jobs' API names
+     * @param active         True to activate, false to deactivate
+     *
+     * @return The deployment Id (null when nothing needed saving) and how each job was handled
+     *
+     * @throws AuraHandledException when no jobs are given, a job does not exist, or the deployment cannot be started
+     */
+    @AuraEnabled
+    public static MassUpdateResult setActiveForJobs(List<String> developerNames, Boolean active) {
+        MassUpdateResult result = new MassUpdateResult();
+        List<SequenceJob> toSave = new List<SequenceJob>();
+        for (SequenceJob job : getExistingJobs(developerNames)) {
+            if (job.active == (active == true)) {
+                result.unchanged.add(job.label);
+            } else if (!hasDescription(job)) {
+                result.needDescription.add(job.label);
+            } else {
+                job.active = active == true;
+                toSave.add(job);
+                result.updated.add(job.label);
+            }
+        }
+        if (!toSave.isEmpty()) {
+            result.deploymentId = deploy(toSave);
+        }
+        System.debug('JobSequenceManagerController()::setActiveForJobs:  result: ' + result);
+        return result;
+    }
+
+    /**
+     * @description Moves several Sequence Jobs to another frequency in one deployment. Each keeps its Order, so it
+     * sorts into the new frequency by that value. Jobs already in the frequency are left alone, and jobs without a
+     * valid description are left out, because the validation rule would fail the whole deployment.
+     *
+     * @param developerNames The jobs' API names
+     * @param frequency      The Job Frequency to move them to
+     *
+     * @return The deployment Id (null when nothing needed saving) and how each job was handled
+     *
+     * @throws AuraHandledException when the frequency is not a Job Frequency value, no jobs are given, a job does not
+     * exist, or the deployment cannot be started
+     */
+    @AuraEnabled
+    public static MassUpdateResult changeFrequency(List<String> developerNames, String frequency) {
+        if (String.isBlank(frequency) || !getPicklistValues(Sequence_Job__mdt.Frequency__c).contains(frequency)) {
+            throw newAuraException(frequency + ' is not a Job Frequency value.');
+        }
+        MassUpdateResult result = new MassUpdateResult();
+        List<SequenceJob> toSave = new List<SequenceJob>();
+        for (SequenceJob job : getExistingJobs(developerNames)) {
+            if (job.frequency == frequency) {
+                result.unchanged.add(job.label);
+            } else if (!hasDescription(job)) {
+                result.needDescription.add(job.label);
+            } else {
+                job.frequency = frequency;
+                toSave.add(job);
+                result.updated.add(job.label);
+            }
+        }
+        if (!toSave.isEmpty()) {
+            result.deploymentId = deploy(toSave);
+        }
+        System.debug('JobSequenceManagerController()::changeFrequency:  result: ' + result);
+        return result;
     }
 
     /**
@@ -262,6 +351,8 @@ public with sharing class JobSequenceManagerController {
 
         SequenceJob current = siblings[index];
         SequenceJob neighbor = siblings[neighborIndex];
+        requireDescription(current);
+        requireDescription(neighbor);
         if (String.isBlank(current.order) || String.isBlank(neighbor.order) || current.order == neighbor.order) {
             throw newAuraException('Give ' + current.label + ' and ' + neighbor.label + ' different Order values first; they can only be swapped when both are set and distinct.');
         }
@@ -652,6 +743,9 @@ public with sharing class JobSequenceManagerController {
         if (String.isBlank(job.label) || job.label.length() > 40) {
             problems.add('Label is required and can be at most 40 characters.');
         }
+        if (!hasDescription(job)) {
+            problems.add('Description is required: describe what the job does and why, in at least ' + DESCRIPTION_MIN_LENGTH + ' characters.');
+        }
         if (String.isBlank(job.jobType)) {
             problems.add('Job Type is required.');
         }
@@ -682,6 +776,33 @@ public with sharing class JobSequenceManagerController {
         //Every token must resolve and every value must fit its type, in each context the job runs in
         problems.addAll(checkParameters(job).problems);
         return problems;
+    }
+
+    /**
+     * @description Checks a job's description the way the SJ_Description_Required validation rule does.
+     *
+     * @param job The job
+     *
+     * @return True when the trimmed description is at least DESCRIPTION_MIN_LENGTH characters
+     */
+    @TestVisible
+    private static Boolean hasDescription(SequenceJob job) {
+        return job.description != null && job.description.trim().length() >= DESCRIPTION_MIN_LENGTH;
+    }
+
+    /**
+     * @description Stops a save of a job that has no valid description (one saved before descriptions were
+     * required), with a clearer message than the validation rule's deployment error.
+     *
+     * @param job The job about to be saved
+     *
+     * @throws AuraHandledException when the job needs a description
+     */
+    private static void requireDescription(SequenceJob job) {
+        if (!hasDescription(job)) {
+            throw newAuraException(job.label + ' needs a description of ' + DESCRIPTION_MIN_LENGTH
+                    + '+ characters before it can be saved. Edit it to add one.');
+        }
     }
 
     /**
@@ -756,6 +877,7 @@ public with sharing class JobSequenceManagerController {
         record.label = job.label;
         Map<String, Object> values = new Map<String, Object>{
                 'Active__c' => job.active == true,
+                'Description__c' => job.description,
                 'Frequency__c' => job.frequency,
                 'Order__c' => job.order,
                 'IsBatchJob__c' => job.isBatchJob == true,
@@ -793,6 +915,7 @@ public with sharing class JobSequenceManagerController {
     private static Sequence_Job__mdt toRecord(SequenceJob job) {
         return new Sequence_Job__mdt(
                 Active__c = job.active == true,
+                Description__c = job.description,
                 Frequency__c = job.frequency,
                 Order__c = job.order,
                 IsBatchJob__c = job.isBatchJob == true,
@@ -825,6 +948,7 @@ public with sharing class JobSequenceManagerController {
         job.recordId = sj.Id;
         job.developerName = sj.DeveloperName;
         job.label = sj.MasterLabel;
+        job.description = sj.Description__c;
         job.active = sj.Active__c;
         job.frequency = sj.Frequency__c;
         job.order = sj.Order__c;
@@ -861,7 +985,7 @@ public with sharing class JobSequenceManagerController {
             }
             return matches;
         }
-        String query = 'SELECT Id, DeveloperName, MasterLabel, Active__c, Frequency__c, Order__c, IsBatchJob__c, Type__c, '
+        String query = 'SELECT Id, DeveloperName, MasterLabel, Description__c, Active__c, Frequency__c, Order__c, IsBatchJob__c, Type__c, '
                 + 'HandlerClass__c, NotificationEmail__c, ExecutionJob__c, BatchLimit__c, UpsertExtIdField__c, PermDelete__c, '
                 + 'AllOrNone__c, Parameters__c, Select__c, From__c, Where__c, OrderBy__c, Limit__c FROM Sequence_Job__mdt';
         if (frequency != null) {
@@ -887,6 +1011,34 @@ public with sharing class JobSequenceManagerController {
             }
         }
         throw newAuraException('No Sequence Job named ' + developerName + ' exists.');
+    }
+
+    /**
+     * @description Loads several existing jobs, in run order.
+     *
+     * @param developerNames The jobs' API names
+     *
+     * @return The jobs
+     *
+     * @throws AuraHandledException when no names are given or a job does not exist
+     */
+    private static List<SequenceJob> getExistingJobs(List<String> developerNames) {
+        if (developerNames == null || developerNames.isEmpty()) {
+            throw newAuraException('Select at least one Sequence Job.');
+        }
+        //Keyed by lowercase name, keeping the name as given for the error message
+        Map<String, String> wanted = new Map<String, String>();
+        for (String name : developerNames) {
+            if (String.isNotBlank(name)) wanted.put(name.toLowerCase(), name);
+        }
+        List<SequenceJob> jobs = new List<SequenceJob>();
+        for (Sequence_Job__mdt sj : querySequenceJobs(null)) {
+            if (wanted.remove(sj.DeveloperName.toLowerCase()) != null) jobs.add(toSequenceJob(sj));
+        }
+        if (!wanted.isEmpty()) {
+            throw newAuraException('No Sequence Job named ' + String.join(wanted.values(), ', ') + ' exists.');
+        }
+        return jobs;
     }
 
     /**

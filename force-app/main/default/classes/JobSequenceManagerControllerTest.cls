@@ -23,6 +23,7 @@
  *   |  10/17/2026 |  Gary Butler      | Tests for handler options and picklist values           |
  *   |  10/17/2026 |  Gary Butler      | Tests for typed-variable parameters and FieldShift      |
  *   |  10/17/2026 |  Gary Butler      | Run standalone refuses non-One Time jobs                |
+ *   |  10/21/2026 |  Gary Butler      | Tests for description and mass updates                  |
  *
  */
 @IsTest
@@ -59,6 +60,7 @@ private class JobSequenceManagerControllerTest {
     private static Sequence_Job__mdt record(String developerName, String frequency, String order) {
         Map<String, Object> fields = new Map<String, Object>{
                 'DeveloperName' => developerName, 'MasterLabel' => developerName, 'Active__c' => true,
+                'Description__c' => 'A test job that exercises the Sequence Jobs tab controller.',
                 'Frequency__c' => frequency, 'Order__c' => order, 'IsBatchJob__c' => false, 'Type__c' => 'Function',
                 'HandlerClass__c' => 'JobSequenceDefaultHandler', 'ExecutionJob__c' => 'FieldShift',
                 'AllOrNone__c' => false, 'PermDelete__c' => false
@@ -75,6 +77,7 @@ private class JobSequenceManagerControllerTest {
         JobSequenceManagerController.SequenceJob job = new JobSequenceManagerController.SequenceJob();
         job.developerName = 'NEW_DAILY_JOB';
         job.label = 'New daily job';
+        job.description = 'Updates active users every day, for the controller tests.';
         job.active = true;
         job.frequency = 'Daily';
         job.order = 'D01';
@@ -141,7 +144,8 @@ private class JobSequenceManagerControllerTest {
         Assert.isNotNull(deploymentId, 'A deployment Id should be returned');
         Metadata.CustomMetadata deployed = (Metadata.CustomMetadata) recorder.containers[0].getMetadata()[0];
         Assert.areEqual('Sequence_Job.NEW_DAILY_JOB', deployed.fullName, 'The record should be named after the job');
-        Assert.areEqual(18, deployed.values.size(), 'Every field should be deployed');
+        Assert.areEqual(19, deployed.values.size(), 'Every field should be deployed');
+        Assert.areEqual(job.description, valueOf(deployed, 'Description__c'), 'The description should be deployed');
         Assert.areEqual(job.whereClause, valueOf(deployed, 'Where__c'), 'The long where clause should be deployed intact');
     }
 
@@ -254,6 +258,160 @@ private class JobSequenceManagerControllerTest {
         Test.stopTest();
 
         Assert.isTrue(rejected, 'Jobs with the same Order cannot be swapped');
+    }
+
+    /**
+     * @description Builds an in-memory Sequence Job record with no description, like one saved before 1.4.0.
+     *
+     * @param developerName The API name
+     * @param frequency     The frequency
+     * @param order         The run order
+     *
+     * @return The record
+     */
+    private static Sequence_Job__mdt recordWithoutDescription(String developerName, String frequency, String order) {
+        Sequence_Job__mdt sj = record(developerName, frequency, order);
+        sj.Description__c = null;
+        return sj;
+    }
+
+    /**
+     * @description Verifies a missing or too-short description is rejected on save, and that single-row
+     * activation and reordering stop with a clear message for a job that has none.
+     */
+    @IsTest
+    static void descriptionIsRequired() {
+        JobSequenceManagerController.deployer = new RecordingDeployer();
+        JobSequenceManagerController.recordsOverride = new List<Sequence_Job__mdt>{
+                recordWithoutDescription('OLD_JOB', 'Daily', 'D01'), record('NEW_JOB', 'Daily', 'D02')
+        };
+        JobSequenceManagerController.SequenceJob shortDescription = validJob();
+        shortDescription.description = '   Too short, padded.        ';
+        JobSequenceManagerController.SequenceJob noDescription = validJob();
+        noDescription.description = null;
+
+        Test.startTest();
+        String shortProblems = String.join(JobSequenceManagerController.validate(shortDescription, true), '\n');
+        String missingProblems = String.join(JobSequenceManagerController.validate(noDescription, true), '\n');
+        String activateMessage;
+        try {
+            JobSequenceManagerController.setActive('OLD_JOB', false);
+        } catch (AuraHandledException e) {
+            activateMessage = e.getMessage();
+        }
+        String moveMessage;
+        try {
+            JobSequenceManagerController.moveJob('NEW_JOB', 'up');
+        } catch (AuraHandledException e) {
+            moveMessage = e.getMessage();
+        }
+        Test.stopTest();
+
+        Assert.isTrue(shortProblems.contains('Description is required'), 'A description under 25 characters once trimmed should be rejected');
+        Assert.isTrue(missingProblems.contains('Description is required'), 'A missing description should be rejected');
+        Assert.isTrue(activateMessage?.contains('OLD_JOB needs a description'), 'Deactivating a job without a description should explain why it stopped');
+        Assert.isTrue(moveMessage?.contains('OLD_JOB needs a description'), 'Swapping with a job without a description should explain why it stopped');
+    }
+
+    /**
+     * @description Verifies mass activation deploys only the jobs that change, in one deployment, and leaves out
+     * jobs that need a description.
+     */
+    @IsTest
+    static void setActiveForJobsDeploysChangedJobsTogether() {
+        RecordingDeployer recorder = new RecordingDeployer();
+        JobSequenceManagerController.deployer = recorder;
+        Sequence_Job__mdt inactiveA = record('JOB_A', 'Daily', 'D01');
+        inactiveA.Active__c = false;
+        Sequence_Job__mdt inactiveB = record('JOB_B', 'Daily', 'D02');
+        inactiveB.Active__c = false;
+        Sequence_Job__mdt inactiveOld = recordWithoutDescription('OLD_JOB', 'Daily', 'D03');
+        inactiveOld.Active__c = false;
+        JobSequenceManagerController.recordsOverride = new List<Sequence_Job__mdt>{
+                inactiveA, inactiveB, inactiveOld, record('JOB_ACTIVE', 'Hourly', 'H01')
+        };
+
+        Test.startTest();
+        JobSequenceManagerController.MassUpdateResult result = JobSequenceManagerController.setActiveForJobs(
+                new List<String>{'job_a', 'JOB_B', 'OLD_JOB', 'JOB_ACTIVE'}, true);
+        Test.stopTest();
+
+        Assert.isNotNull(result.deploymentId, 'A deployment Id should be returned');
+        Assert.areEqual(1, recorder.containers.size(), 'All changed jobs should go in one deployment');
+        List<Metadata.Metadata> deployed = recorder.containers[0].getMetadata();
+        Assert.areEqual(2, deployed.size(), 'Only the jobs that change should be deployed');
+        Assert.areEqual(true, valueOf((Metadata.CustomMetadata) deployed[0], 'Active__c'), 'The jobs should be activated');
+        Assert.areEqual(new List<String>{'JOB_A', 'JOB_B'}, result.updated, 'The activated jobs should be reported');
+        Assert.areEqual(new List<String>{'OLD_JOB'}, result.needDescription, 'The job without a description should be left out');
+        Assert.areEqual(new List<String>{'JOB_ACTIVE'}, result.unchanged, 'The already active job should be left alone');
+    }
+
+    /**
+     * @description Verifies a mass update with nothing to save starts no deployment, and that unknown or missing
+     * job names are rejected.
+     */
+    @IsTest
+    static void massUpdatesRejectBadSelections() {
+        RecordingDeployer recorder = new RecordingDeployer();
+        JobSequenceManagerController.deployer = recorder;
+        JobSequenceManagerController.recordsOverride = new List<Sequence_Job__mdt>{record('JOB_A', 'Daily', 'D01')};
+
+        Test.startTest();
+        JobSequenceManagerController.MassUpdateResult nothingToDo = JobSequenceManagerController.setActiveForJobs(
+                new List<String>{'JOB_A'}, true);
+        String emptyMessage;
+        try {
+            JobSequenceManagerController.setActiveForJobs(new List<String>(), false);
+        } catch (AuraHandledException e) {
+            emptyMessage = e.getMessage();
+        }
+        String unknownMessage;
+        try {
+            JobSequenceManagerController.changeFrequency(new List<String>{'JOB_A', 'NO_SUCH_JOB'}, 'Weekly');
+        } catch (AuraHandledException e) {
+            unknownMessage = e.getMessage();
+        }
+        String frequencyMessage;
+        try {
+            JobSequenceManagerController.changeFrequency(new List<String>{'JOB_A'}, 'Fortnightly');
+        } catch (AuraHandledException e) {
+            frequencyMessage = e.getMessage();
+        }
+        Test.stopTest();
+
+        Assert.isNull(nothingToDo.deploymentId, 'No deployment should start when nothing changes');
+        Assert.areEqual(0, recorder.containers.size(), 'Nothing should be deployed');
+        Assert.isTrue(emptyMessage?.contains('Select at least one'), 'An empty selection should be rejected');
+        Assert.isTrue(unknownMessage?.contains('NO_SUCH_JOB'),'An unknown job should be named in the error');
+        Assert.isTrue(frequencyMessage?.contains('not a Job Frequency value'), 'An unknown frequency should be rejected');
+    }
+
+    /**
+     * @description Verifies Change Frequency moves the selected jobs in one deployment, keeping each job's Order
+     * and its other values.
+     */
+    @IsTest
+    static void changeFrequencyKeepsOrder() {
+        RecordingDeployer recorder = new RecordingDeployer();
+        JobSequenceManagerController.deployer = recorder;
+        JobSequenceManagerController.recordsOverride = new List<Sequence_Job__mdt>{
+                record('JOB_A', 'Daily', 'D01'), record('JOB_B', 'Daily', 'D02'),
+                record('JOB_W', 'Weekly', 'W01'), recordWithoutDescription('OLD_JOB', 'Daily', 'D03')
+        };
+
+        Test.startTest();
+        JobSequenceManagerController.MassUpdateResult result = JobSequenceManagerController.changeFrequency(
+                new List<String>{'JOB_A', 'JOB_B', 'JOB_W', 'OLD_JOB'}, 'Weekly');
+        Test.stopTest();
+
+        List<Metadata.Metadata> deployed = recorder.containers[0].getMetadata();
+        Assert.areEqual(2, deployed.size(), 'The two describable Daily jobs should be deployed together');
+        Metadata.CustomMetadata first = (Metadata.CustomMetadata) deployed[0];
+        Assert.areEqual('Weekly', valueOf(first, 'Frequency__c'), 'The job should move to Weekly');
+        Assert.areEqual('D01', valueOf(first, 'Order__c'), 'The job should keep its Order');
+        Assert.areEqual('FieldShift', valueOf(first, 'ExecutionJob__c'), 'The other values should be kept');
+        Assert.areEqual(new List<String>{'JOB_W'}, result.unchanged, 'The job already in Weekly should be left alone');
+        Assert.areEqual(new List<String>{'OLD_JOB'}, result.needDescription, 'The job without a description should be left out');
     }
 
     /**

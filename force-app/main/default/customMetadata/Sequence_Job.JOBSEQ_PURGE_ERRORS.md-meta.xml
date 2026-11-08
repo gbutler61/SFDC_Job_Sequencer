@@ -15,6 +15,10 @@
         <value xsi:type="xsd:double">200.0</value>
     </values>
     <values>
+        <field>Description__c</field>
+        <value xsi:type="xsd:string">Packaged cleanup job. Each day, deletes Job Sequence Error records older than the Error Retention Days setting, so the error log does not grow without limit. Runs last in Daily.</value>
+    </values>
+    <values>
         <field>ExecutionJob__c</field>
         <value xsi:type="xsd:string">DELETE</value>
     </values>

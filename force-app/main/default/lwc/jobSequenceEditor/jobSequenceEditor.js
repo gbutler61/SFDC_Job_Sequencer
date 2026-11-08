@@ -29,7 +29,9 @@ import { ensureSubscribed, waitForDeployment } from 'c/jobSequenceDeployWatcher'
 const NUMBER_FIELDS = ['batchLimit', 'recordLimit'];
 const OTHER_FUNCTION = '__other__';
 // Shown in the editor footer while testing, to confirm the browser has the latest version; bumped on each deploy
-const BUILD_NUMBER = 7;
+const BUILD_NUMBER = 8;
+// Matches the SJ_Description_Required validation rule
+const DESCRIPTION_MIN_LENGTH = 25;
 const QUERY_FIELD_LABELS = { selectFields: 'Query - Select', whereClause: 'Query - Where', orderBy: 'Query - OrderBy' };
 const CHECKBOX_FIELDS = ['active', 'isBatchJob', 'permDelete', 'allOrNone'];
 const DML_OPTIONS = [
@@ -760,6 +762,10 @@ export default class JobSequenceEditor extends LightningModal {
         if (field === 'developerName') {
             this.developerNameEdited = true;
         }
+        if (field === 'description') {
+            // Cleared while typing; Save checks the length again
+            event.target.setCustomValidity('');
+        }
         if (field === 'jobType' && value === 'DML' && !DML_OPTIONS.some((o) => o.value === (next.executionJob || '').toUpperCase())) {
             next.executionJob = 'UPDATE';
         }
@@ -783,10 +789,37 @@ export default class JobSequenceEditor extends LightningModal {
     }
 
     /**
+     * @description The description's length once trimmed, as the validation rule counts it.
+     * @returns {Number} The number of characters
+     */
+    get descriptionLength() {
+        return (this.form.description || '').trim().length;
+    }
+
+    get descriptionCountText() {
+        const length = this.descriptionLength;
+        return length >= DESCRIPTION_MIN_LENGTH
+            ? `${length} characters`
+            : `${length} of at least ${DESCRIPTION_MIN_LENGTH} characters`;
+    }
+
+    get descriptionCountClass() {
+        return `slds-text-body_small ${this.descriptionLength >= DESCRIPTION_MIN_LENGTH ? 'slds-text-color_weak' : 'slds-text-color_error'}`;
+    }
+
+    /**
      * @description Checks every input's own validity (required, ranges, lengths) and shows the messages.
      * @returns {Boolean} True when all inputs are valid
      */
     validateInputs() {
+        const description = this.template.querySelector('lightning-textarea.description');
+        if (description) {
+            // min-length only checks typed text and counts spaces, so check the trimmed length here
+            const length = this.descriptionLength;
+            description.setCustomValidity(
+                this.form.description && length < DESCRIPTION_MIN_LENGTH ? `Describe what the job does and why, in at least ${DESCRIPTION_MIN_LENGTH} characters.` : ''
+            );
+        }
         const inputs = [...this.template.querySelectorAll('lightning-input, lightning-combobox, lightning-textarea')];
         const inputsValid = inputs.reduce((valid, input) => input.reportValidity() && valid, true);
         // The object picker and the query text boxes are not base components, so check them here

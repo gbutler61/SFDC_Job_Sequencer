@@ -1,8 +1,8 @@
 {
   "packageDirectories": [
     {
-      "versionName": "ver 1.3",
-      "versionNumber": "1.3.0.NEXT",
+      "versionName": "ver 1.4",
+      "versionNumber": "1.4.0.NEXT",
       "path": "force-app",
       "default": true,
       "package": "Job Sequencer",

@@ -15,6 +15,10 @@
         <value xsi:type="xsd:double">200.0</value>
     </values>
     <values>
+        <field>Description__c</field>
+        <value xsi:type="xsd:string">Used only by the package's Apex tests (Test Only frequency, never scheduled): runs FieldShift on User records modified since the {!Var.since} variable to prove the function and variables work.</value>
+    </values>
+    <values>
         <field>ExecutionJob__c</field>
         <value xsi:type="xsd:string">FieldShift</value>
     </values>

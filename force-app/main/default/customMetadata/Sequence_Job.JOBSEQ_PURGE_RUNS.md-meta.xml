@@ -15,6 +15,10 @@
         <value xsi:type="xsd:double">200.0</value>
     </values>
     <values>
+        <field>Description__c</field>
+        <value xsi:type="xsd:string">Packaged cleanup job. Each day, deletes finished Job Sequence Run records (and their steps) older than the Run Retention Days setting, so run history does not grow without limit. Runs last in Daily.</value>
+    </values>
+    <values>
         <field>ExecutionJob__c</field>
         <value xsi:type="xsd:string">DELETE</value>
     </values>
